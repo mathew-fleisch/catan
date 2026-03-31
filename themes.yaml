@@ -1,0 +1,94 @@
+# Catan CLI Themes Configuration
+# Set active to 'text' or 'emoji', or define your own.
+active: text
+
+# Global character mapping (Word -> Character/Emoji)
+characters:
+  PINE_TREE: "🌲"
+  BRICKS: "🧱"
+  SHEEP_ICON: "🐑"
+  WHEAT_ICON: "🌾"
+  MOUNTAIN: "🏔"
+  DESERT_ICON: "🏜"
+  SAILBOAT: "⛵"
+  DOT: "●"
+  SQUARE: "■"
+  PERSON: "👤"
+  PLAY_ICON: "▶️"
+  PAUSE_ICON: "⏸️"
+  SWORDS: "⚔️"
+  ROAD_ICON: "🛣️"
+  CURSOR_ICON: "▶"
+
+themes:
+  text:
+    resources:
+      wood: "W"
+      brick: "B"
+      sheep: "s"
+      wheat: "w"
+      ore: "O"
+      desert: "D"
+    board:
+      port: "S"
+      settlement: "o"
+      city: "H"
+      robber: "X"
+    ui:
+      playing: ">>"
+      paused: "||"
+      largest_army: "[A]"
+      longest_road: "[R]"
+      player_cursor: ">>"
+    widths:
+      "W": 1
+      "B": 1
+      "s": 1
+      "w": 1
+      "O": 1
+      "D": 1
+      "o": 1
+      "H": 1
+      "X": 1
+      "S": 1
+      ">>": 2
+      "||": 2
+      "[A]": 3
+      "[R]": 3
+
+  emoji:
+    resources:
+      wood: "PINE_TREE"
+      brick: "BRICKS"
+      sheep: "SHEEP_ICON"
+      wheat: "WHEAT_ICON"
+      ore: "MOUNTAIN"
+      desert: "DESERT_ICON"
+    board:
+      port: "SAILBOAT"
+      settlement: "DOT"
+      city: "SQUARE"
+      robber: "PERSON"
+    ui:
+      playing: "PLAY_ICON"
+      paused: "PAUSE_ICON"
+      largest_army: "SWORDS"
+      longest_road: "ROAD_ICON"
+      player_cursor: "CURSOR_ICON"
+    # Widths here map to the resolved emojis
+    widths:
+      "🌲": 2
+      "🧱": 2
+      "🐑": 2
+      "🌾": 2
+      "🏔": 2
+      "🏜": 2
+      "⛵": 2
+      "●": 1
+      "■": 1
+      "👤": 2
+      "▶️": 2
+      "⏸️": 2
+      "⚔️": 2
+      "🛣️": 2
+      "▶": 1

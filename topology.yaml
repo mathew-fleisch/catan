@@ -1,0 +1,822 @@
+edges:
+  EA06:
+    adjacent_vertices:
+    - VA06
+    - VA07
+    x: 13
+    y: 0
+  EB04:
+    adjacent_vertices:
+    - VB04
+    - VB05
+    x: 9
+    y: 2
+  EB05:
+    adjacent_vertices:
+    - VA06
+    - VB05
+    x: 11
+    y: 1
+  EB07:
+    adjacent_vertices:
+    - VA07
+    - VB08
+    x: 15
+    y: 1
+  EB08:
+    adjacent_vertices:
+    - VB08
+    - VB09
+    x: 17
+    y: 2
+  EC02:
+    adjacent_vertices:
+    - VC02
+    - VC03
+    x: 5
+    y: 4
+  EC03:
+    adjacent_vertices:
+    - VB04
+    - VC03
+    x: 7
+    y: 3
+  EC05:
+    adjacent_vertices:
+    - VB05
+    - VC06
+    x: 11
+    y: 3
+  EC06:
+    adjacent_vertices:
+    - VC06
+    - VC07
+    x: 13
+    y: 4
+  EC07:
+    adjacent_vertices:
+    - VB08
+    - VC07
+    x: 15
+    y: 3
+  EC09:
+    adjacent_vertices:
+    - VB09
+    - VC10
+    x: 19
+    y: 3
+  EC10:
+    adjacent_vertices:
+    - VC10
+    - VC11
+    x: 21
+    y: 4
+  ED01:
+    adjacent_vertices:
+    - VC02
+    - VD01
+    x: 3
+    y: 5
+  ED03:
+    adjacent_vertices:
+    - VC03
+    - VD04
+    x: 7
+    y: 5
+  ED04:
+    adjacent_vertices:
+    - VD04
+    - VD05
+    x: 9
+    y: 6
+  ED05:
+    adjacent_vertices:
+    - VC06
+    - VD05
+    x: 11
+    y: 5
+  ED07:
+    adjacent_vertices:
+    - VC07
+    - VD08
+    x: 15
+    y: 5
+  ED08:
+    adjacent_vertices:
+    - VD08
+    - VD09
+    x: 17
+    y: 6
+  ED09:
+    adjacent_vertices:
+    - VC10
+    - VD09
+    x: 19
+    y: 5
+  ED11:
+    adjacent_vertices:
+    - VC11
+    - VD12
+    x: 23
+    y: 5
+  EE01:
+    adjacent_vertices:
+    - VD01
+    - VE02
+    x: 3
+    y: 7
+  EE02:
+    adjacent_vertices:
+    - VE02
+    - VE03
+    x: 5
+    y: 8
+  EE03:
+    adjacent_vertices:
+    - VD04
+    - VE03
+    x: 7
+    y: 7
+  EE05:
+    adjacent_vertices:
+    - VD05
+    - VE06
+    x: 11
+    y: 7
+  EE06:
+    adjacent_vertices:
+    - VE06
+    - VE07
+    x: 13
+    y: 8
+  EE07:
+    adjacent_vertices:
+    - VD08
+    - VE07
+    x: 15
+    y: 7
+  EE09:
+    adjacent_vertices:
+    - VD09
+    - VE10
+    x: 19
+    y: 7
+  EE10:
+    adjacent_vertices:
+    - VE10
+    - VE11
+    x: 21
+    y: 8
+  EE11:
+    adjacent_vertices:
+    - VD12
+    - VE11
+    x: 23
+    y: 7
+  EF01:
+    adjacent_vertices:
+    - VE02
+    - VF01
+    x: 3
+    y: 9
+  EF03:
+    adjacent_vertices:
+    - VE03
+    - VF04
+    x: 7
+    y: 9
+  EF04:
+    adjacent_vertices:
+    - VF04
+    - VF05
+    x: 9
+    y: 10
+  EF05:
+    adjacent_vertices:
+    - VE06
+    - VF05
+    x: 11
+    y: 9
+  EF07:
+    adjacent_vertices:
+    - VE07
+    - VF08
+    x: 15
+    y: 9
+  EF08:
+    adjacent_vertices:
+    - VF08
+    - VF09
+    x: 17
+    y: 10
+  EF09:
+    adjacent_vertices:
+    - VE10
+    - VF09
+    x: 19
+    y: 9
+  EF11:
+    adjacent_vertices:
+    - VE11
+    - VF12
+    x: 23
+    y: 9
+  EG01:
+    adjacent_vertices:
+    - VF01
+    - VG02
+    x: 3
+    y: 11
+  EG02:
+    adjacent_vertices:
+    - VG02
+    - VG03
+    x: 5
+    y: 12
+  EG03:
+    adjacent_vertices:
+    - VF04
+    - VG03
+    x: 7
+    y: 11
+  EG05:
+    adjacent_vertices:
+    - VF05
+    - VG06
+    x: 11
+    y: 11
+  EG06:
+    adjacent_vertices:
+    - VG06
+    - VG07
+    x: 13
+    y: 12
+  EG07:
+    adjacent_vertices:
+    - VF08
+    - VG07
+    x: 15
+    y: 11
+  EG09:
+    adjacent_vertices:
+    - VF09
+    - VG10
+    x: 19
+    y: 11
+  EG10:
+    adjacent_vertices:
+    - VG10
+    - VG11
+    x: 21
+    y: 12
+  EG11:
+    adjacent_vertices:
+    - VF12
+    - VG11
+    x: 23
+    y: 11
+  EH01:
+    adjacent_vertices:
+    - VG02
+    - VH01
+    x: 3
+    y: 13
+  EH03:
+    adjacent_vertices:
+    - VG03
+    - VH04
+    x: 7
+    y: 13
+  EH04:
+    adjacent_vertices:
+    - VH04
+    - VH05
+    x: 9
+    y: 14
+  EH05:
+    adjacent_vertices:
+    - VG06
+    - VH05
+    x: 11
+    y: 13
+  EH07:
+    adjacent_vertices:
+    - VG07
+    - VH08
+    x: 15
+    y: 13
+  EH08:
+    adjacent_vertices:
+    - VH08
+    - VH09
+    x: 17
+    y: 14
+  EH09:
+    adjacent_vertices:
+    - VG10
+    - VH09
+    x: 19
+    y: 13
+  EH11:
+    adjacent_vertices:
+    - VG11
+    - VH12
+    x: 23
+    y: 13
+  EI01:
+    adjacent_vertices:
+    - VH01
+    - VI02
+    x: 3
+    y: 15
+  EI02:
+    adjacent_vertices:
+    - VI02
+    - VI03
+    x: 5
+    y: 16
+  EI03:
+    adjacent_vertices:
+    - VH04
+    - VI03
+    x: 7
+    y: 15
+  EI05:
+    adjacent_vertices:
+    - VH05
+    - VI06
+    x: 11
+    y: 15
+  EI06:
+    adjacent_vertices:
+    - VI06
+    - VI07
+    x: 13
+    y: 16
+  EI07:
+    adjacent_vertices:
+    - VH08
+    - VI07
+    x: 15
+    y: 15
+  EI09:
+    adjacent_vertices:
+    - VH09
+    - VI10
+    x: 19
+    y: 15
+  EI10:
+    adjacent_vertices:
+    - VI10
+    - VI11
+    x: 21
+    y: 16
+  EI11:
+    adjacent_vertices:
+    - VH12
+    - VI11
+    x: 23
+    y: 15
+  EJ03:
+    adjacent_vertices:
+    - VI03
+    - VJ04
+    x: 7
+    y: 17
+  EJ04:
+    adjacent_vertices:
+    - VJ04
+    - VJ05
+    x: 9
+    y: 18
+  EJ05:
+    adjacent_vertices:
+    - VI06
+    - VJ05
+    x: 11
+    y: 17
+  EJ07:
+    adjacent_vertices:
+    - VI07
+    - VJ08
+    x: 15
+    y: 17
+  EJ08:
+    adjacent_vertices:
+    - VJ08
+    - VJ09
+    x: 17
+    y: 18
+  EJ09:
+    adjacent_vertices:
+    - VI10
+    - VJ09
+    x: 19
+    y: 17
+  EK05:
+    adjacent_vertices:
+    - VJ05
+    - VK06
+    x: 11
+    y: 19
+  EK06:
+    adjacent_vertices:
+    - VK06
+    - VK07
+    x: 13
+    y: 20
+  EK07:
+    adjacent_vertices:
+    - VJ08
+    - VK07
+    x: 15
+    y: 19
+vertices:
+  VA06:
+    adjacent_edges:
+    - EA06
+    - EB05
+    x: 12
+    y: 0
+  VA07:
+    adjacent_edges:
+    - EA06
+    - EB07
+    x: 14
+    y: 0
+  VB04:
+    adjacent_edges:
+    - EB04
+    - EC03
+    x: 8
+    y: 2
+  VB05:
+    adjacent_edges:
+    - EB04
+    - EC05
+    - EB05
+    x: 10
+    y: 2
+  VB08:
+    adjacent_edges:
+    - EB08
+    - EC07
+    - EB07
+    x: 16
+    y: 2
+  VB09:
+    adjacent_edges:
+    - EB08
+    - EC09
+    x: 18
+    y: 2
+  VC02:
+    adjacent_edges:
+    - EC02
+    - ED01
+    x: 4
+    y: 4
+  VC03:
+    adjacent_edges:
+    - EC02
+    - ED03
+    - EC03
+    x: 6
+    y: 4
+  VC06:
+    adjacent_edges:
+    - EC06
+    - ED05
+    - EC05
+    x: 12
+    y: 4
+  VC07:
+    adjacent_edges:
+    - EC06
+    - ED07
+    - EC07
+    x: 14
+    y: 4
+  VC10:
+    adjacent_edges:
+    - EC10
+    - ED09
+    - EC09
+    x: 20
+    y: 4
+  VC11:
+    adjacent_edges:
+    - EC10
+    - ED11
+    x: 22
+    y: 4
+  VD01:
+    adjacent_edges:
+    - EE01
+    - ED01
+    x: 2
+    y: 6
+  VD04:
+    adjacent_edges:
+    - ED04
+    - EE03
+    - ED03
+    x: 8
+    y: 6
+  VD05:
+    adjacent_edges:
+    - ED04
+    - EE05
+    - ED05
+    x: 10
+    y: 6
+  VD08:
+    adjacent_edges:
+    - ED08
+    - EE07
+    - ED07
+    x: 16
+    y: 6
+  VD09:
+    adjacent_edges:
+    - ED08
+    - EE09
+    - ED09
+    x: 18
+    y: 6
+  VD12:
+    adjacent_edges:
+    - EE11
+    - ED11
+    x: 24
+    y: 6
+  VE02:
+    adjacent_edges:
+    - EE02
+    - EF01
+    - EE01
+    x: 4
+    y: 8
+  VE03:
+    adjacent_edges:
+    - EE02
+    - EF03
+    - EE03
+    x: 6
+    y: 8
+  VE06:
+    adjacent_edges:
+    - EE06
+    - EF05
+    - EE05
+    x: 12
+    y: 8
+  VE07:
+    adjacent_edges:
+    - EE06
+    - EF07
+    - EE07
+    x: 14
+    y: 8
+  VE10:
+    adjacent_edges:
+    - EE10
+    - EF09
+    - EE09
+    x: 20
+    y: 8
+  VE11:
+    adjacent_edges:
+    - EE10
+    - EF11
+    - EE11
+    x: 22
+    y: 8
+  VF01:
+    adjacent_edges:
+    - EG01
+    - EF01
+    x: 2
+    y: 10
+  VF04:
+    adjacent_edges:
+    - EF04
+    - EG03
+    - EF03
+    x: 8
+    y: 10
+  VF05:
+    adjacent_edges:
+    - EF04
+    - EG05
+    - EF05
+    x: 10
+    y: 10
+  VF08:
+    adjacent_edges:
+    - EF08
+    - EG07
+    - EF07
+    x: 16
+    y: 10
+  VF09:
+    adjacent_edges:
+    - EF08
+    - EG09
+    - EF09
+    x: 18
+    y: 10
+  VF12:
+    adjacent_edges:
+    - EG11
+    - EF11
+    x: 24
+    y: 10
+  VG02:
+    adjacent_edges:
+    - EG02
+    - EH01
+    - EG01
+    x: 4
+    y: 12
+  VG03:
+    adjacent_edges:
+    - EG02
+    - EH03
+    - EG03
+    x: 6
+    y: 12
+  VG06:
+    adjacent_edges:
+    - EG06
+    - EH05
+    - EG05
+    x: 12
+    y: 12
+  VG07:
+    adjacent_edges:
+    - EG06
+    - EH07
+    - EG07
+    x: 14
+    y: 12
+  VG10:
+    adjacent_edges:
+    - EG10
+    - EH09
+    - EG09
+    x: 20
+    y: 12
+  VG11:
+    adjacent_edges:
+    - EG10
+    - EH11
+    - EG11
+    x: 22
+    y: 12
+  VH01:
+    adjacent_edges:
+    - EI01
+    - EH01
+    x: 2
+    y: 14
+  VH04:
+    adjacent_edges:
+    - EH04
+    - EI03
+    - EH03
+    x: 8
+    y: 14
+  VH05:
+    adjacent_edges:
+    - EH04
+    - EI05
+    - EH05
+    x: 10
+    y: 14
+  VH08:
+    adjacent_edges:
+    - EH08
+    - EI07
+    - EH07
+    x: 16
+    y: 14
+  VH09:
+    adjacent_edges:
+    - EH08
+    - EI09
+    - EH09
+    x: 18
+    y: 14
+  VH12:
+    adjacent_edges:
+    - EI11
+    - EH11
+    x: 24
+    y: 14
+  VI02:
+    adjacent_edges:
+    - EI02
+    - EI01
+    x: 4
+    y: 16
+  VI03:
+    adjacent_edges:
+    - EI02
+    - EJ03
+    - EI03
+    x: 6
+    y: 16
+  VI06:
+    adjacent_edges:
+    - EI06
+    - EJ05
+    - EI05
+    x: 12
+    y: 16
+  VI07:
+    adjacent_edges:
+    - EI06
+    - EJ07
+    - EI07
+    x: 14
+    y: 16
+  VI10:
+    adjacent_edges:
+    - EI10
+    - EJ09
+    - EI09
+    x: 20
+    y: 16
+  VI11:
+    adjacent_edges:
+    - EI10
+    - EI11
+    x: 22
+    y: 16
+  VJ04:
+    adjacent_edges:
+    - EJ04
+    - EJ03
+    x: 8
+    y: 18
+  VJ05:
+    adjacent_edges:
+    - EJ04
+    - EK05
+    - EJ05
+    x: 10
+    y: 18
+  VJ08:
+    adjacent_edges:
+    - EJ08
+    - EK07
+    - EJ07
+    x: 16
+    y: 18
+  VJ09:
+    adjacent_edges:
+    - EJ08
+    - EJ09
+    x: 18
+    y: 18
+  VK06:
+    adjacent_edges:
+    - EK06
+    - EK05
+    x: 12
+    y: 20
+  VK07:
+    adjacent_edges:
+    - EK06
+    - EK07
+    x: 14
+    y: 20
+ports:
+  P1:
+    type: "3:1"
+    vertices: [VA06, VA07]
+  P2:
+    type: "brick"
+    vertices: [VB04, VC03]
+  P3:
+    type: "3:1"
+    vertices: [VB09, VC10]
+  P4:
+    type: "wood"
+    vertices: [VE02, VF01]
+  P5:
+    type: "3:1"
+    vertices: [VE11, VF12]
+  P6:
+    type: "sheep"
+    vertices: [VH01, VI02]
+  P7:
+    type: "3:1"
+    vertices: [VH12, VI11]
+  P8:
+    type: "wheat"
+    vertices: [VJ04, VK06]
+  P9:
+    type: "ore"
+    vertices: [VJ09, VK07]

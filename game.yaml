@@ -1,0 +1,260 @@
+meta:
+    status: setup
+    last_action_timestamp: 1774963653
+    timeout_seconds: 86400
+    max_skips: 3
+    turn_order:
+        - bot-2
+        - bot-3
+        - bot-1
+    current_player_id: bot-2
+    phase: setup_1
+    dev_card_deck:
+        - vp
+        - knight
+        - knight
+        - knight
+        - knight
+        - vp
+        - monopoly
+        - vp
+        - knight
+        - year_of_plenty
+        - knight
+        - knight
+        - knight
+        - knight
+        - road_building
+        - year_of_plenty
+        - knight
+        - knight
+        - knight
+        - vp
+        - vp
+        - road_building
+        - knight
+        - monopoly
+        - knight
+    pending_offers: []
+    discarding_players: []
+    largest_army_player: bot2
+    largest_army_count: 4
+    longest_road_player: bot2
+    longest_road_count: 15
+    last_roll_1: 1
+    last_roll_2: 4
+board:
+    hexes:
+        TB06:
+            resource: brick
+            token: 11
+            robber: false
+            vertices: VA06,VA07,VB05,VB08,VC06,VC07
+        TC04:
+            resource: brick
+            token: 5
+            robber: false
+            vertices: VB04,VB05,VC03,VC06,VD04,VD05
+        TC08:
+            resource: wheat
+            token: 9
+            robber: false
+            vertices: VB08,VB09,VC07,VC10,VD08,VD09
+        TD02:
+            resource: desert
+            token: 0
+            robber: true
+            vertices: VC02,VC03,VD01,VD04,VE02,VE03
+        TD06:
+            resource: ore
+            token: 9
+            robber: false
+            vertices: VC06,VC07,VD05,VD08,VE06,VE07
+        TD10:
+            resource: wood
+            token: 11
+            robber: false
+            vertices: VC10,VC11,VD09,VD12,VE10,VE11
+        TE04:
+            resource: ore
+            token: 6
+            robber: false
+            vertices: VD04,VD05,VE03,VE06,VF04,VF05
+        TE08:
+            resource: ore
+            token: 5
+            robber: false
+            vertices: VD08,VD09,VE07,VE10,VF08,VF09
+        TF02:
+            resource: sheep
+            token: 2
+            robber: false
+            vertices: VE02,VE03,VF01,VF04,VG02,VG03
+        TF06:
+            resource: brick
+            token: 12
+            robber: false
+            vertices: VE06,VE07,VF05,VF08,VG06,VG07
+        TF10:
+            resource: wheat
+            token: 3
+            robber: false
+            vertices: VE10,VE11,VF09,VF12,VG10,VG11
+        TG04:
+            resource: wheat
+            token: 6
+            robber: false
+            vertices: VF04,VF05,VG03,VG06,VH04,VH05
+        TG08:
+            resource: sheep
+            token: 10
+            robber: false
+            vertices: VF08,VF09,VG07,VG10,VH08,VH09
+        TH02:
+            resource: wood
+            token: 8
+            robber: false
+            vertices: VG02,VG03,VH01,VH04,VI02,VI03
+        TH06:
+            resource: sheep
+            token: 3
+            robber: false
+            vertices: VG06,VG07,VH05,VH08,VI06,VI07
+        TH10:
+            resource: wood
+            token: 4
+            robber: false
+            vertices: VG10,VG11,VH09,VH12,VI10,VI11
+        TI04:
+            resource: wheat
+            token: 4
+            robber: false
+            vertices: VH04,VH05,VI03,VI06,VJ04,VJ05
+        TI08:
+            resource: sheep
+            token: 10
+            robber: false
+            vertices: VH08,VH09,VI07,VI10,VJ08,VJ09
+        TJ06:
+            resource: wood
+            token: 8
+            robber: false
+            vertices: VI06,VI07,VJ05,VJ08,VK06,VK07
+    vertices:
+        VC06:
+            owner_id: bot-2
+            type: settlement
+    edges:
+        ED05:
+            owner_id: bot-2
+        EE05:
+            owner_id: bot-2
+    ports:
+        P1: brick
+        P2: "3:1"
+        P3: wood
+        P4: "3:1"
+        P5: "3:1"
+        P6: sheep
+        P7: ore
+        P8: "3:1"
+        P9: wheat
+players:
+    - id: bot-1
+      type: bot
+      resources:
+        brick: 0
+        ore: 0
+        sheep: 0
+        wheat: 0
+        wood: 0
+      vp: 0
+      skip_count: 0
+      dev_cards:
+        knight: 0
+        monopoly: 0
+        road_building: 0
+        vp: 0
+        year_of_plenty: 0
+      new_dev_cards:
+        knight: 0
+        monopoly: 0
+        road_building: 0
+        vp: 0
+        year_of_plenty: 0
+      knights_played: 0
+    - id: bot-2
+      type: bot
+      resources:
+        brick: 0
+        ore: 0
+        sheep: 0
+        wheat: 0
+        wood: 0
+      vp: 1
+      skip_count: 0
+      dev_cards:
+        knight: 0
+        monopoly: 0
+        road_building: 0
+        vp: 0
+        year_of_plenty: 0
+      new_dev_cards:
+        knight: 0
+        monopoly: 0
+        road_building: 0
+        vp: 0
+        year_of_plenty: 0
+      knights_played: 0
+    - id: bot-3
+      type: bot
+      resources:
+        brick: 0
+        ore: 0
+        sheep: 0
+        wheat: 0
+        wood: 0
+      vp: 0
+      skip_count: 0
+      dev_cards:
+        knight: 0
+        monopoly: 0
+        road_building: 0
+        vp: 0
+        year_of_plenty: 0
+      new_dev_cards:
+        knight: 0
+        monopoly: 0
+        road_building: 0
+        vp: 0
+        year_of_plenty: 0
+      knights_played: 0
+log:
+    - timestamp: 1774922279
+      player_id: bot-1
+      action: join
+      data: bot
+    - timestamp: 1774922281
+      player_id: bot-2
+      action: join
+      data: bot
+    - timestamp: 1774922283
+      player_id: bot-3
+      action: join
+      data: bot
+    - timestamp: 1774922293
+      player_id: ""
+      action: begin
+      data: bot-2,bot-3,bot-1
+    - timestamp: 1774922306
+      player_id: bot-2
+      action: build_settlement
+      data: VC06
+    - timestamp: 1774963650
+      player_id: bot-2
+      action: build_road
+      data: ED05
+    - timestamp: 1774963653
+      player_id: bot-2
+      action: build_road
+      data: EE05
