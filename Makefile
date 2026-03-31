@@ -80,3 +80,6 @@ server-stop: ## Stop the local python server
 		echo "No server PID file found."; \
 		pkill -f "python3 -m http.server $(PORT)" || true; \
 	fi
+
+.PHONY: restart
+restart: server-stop server-start ## Restart the local python server
