@@ -1,0 +1,7 @@
+*.gif
+*.mp4
+frames/
+vector_frames/
+catan
+main
+.server.pid

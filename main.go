@@ -3112,10 +3112,18 @@ func renderVectorFrame(state GameState, topo Topology, step, total int, filename
 	fontPath := "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 	dc.LoadFontFace(fontPath, 20)
 
-	offsetX := 100.0
-	offsetY := 100.0
-	scaleX := 50.0
-	scaleY := 35.0
+	offsetX := BoardWidth / 2.0
+	offsetY := H / 2.0
+	scaleX := 32.0
+	scaleY := 28.0 // Adjusted for visual balance
+
+	// Center the coordinates: x range is 2-24 (avg 13), y range is 0-20 (avg 10)
+	// cX = (topoX - 13) * scaleX + offsetX
+	// cY = (topoY - 10) * scaleY + offsetY
+	
+	getCoord := func(tx, ty float64) (float64, float64) {
+		return (tx-13.0)*scaleX + offsetX, (ty-10.0)*scaleY + offsetY
+	}
 
 	playerColorMap := make(map[string]color.Color)
 	playerColorsVec := []color.RGBA{
@@ -3147,8 +3155,7 @@ func renderVectorFrame(state GameState, topo Topology, step, total int, filename
 		if count == 0 {
 			continue
 		}
-		cX := (avgX/float64(count))*scaleX + offsetX
-		cY := (avgY/float64(count))*scaleY + offsetY
+		cX, cY := getCoord(avgX/float64(count), avgY/float64(count))
 
 		dc.DrawRegularPolygon(6, cX, cY, HexRadius, 0)
 		switch hState.Resource {
@@ -3198,10 +3205,8 @@ func renderVectorFrame(state GameState, topo Topology, step, total int, filename
 		}
 		v1 := topo.Vertices[eTopo.AdjacentVertices[0]]
 		v2 := topo.Vertices[eTopo.AdjacentVertices[1]]
-		x1 := (float64(v1.X))*scaleX + offsetX
-		y1 := (float64(v1.Y))*scaleY + offsetY
-		x2 := (float64(v2.X))*scaleX + offsetX
-		y2 := (float64(v2.Y))*scaleY + offsetY
+		x1, y1 := getCoord(float64(v1.X), float64(v1.Y))
+		x2, y2 := getCoord(float64(v2.X), float64(v2.Y))
 		c, ok := playerColorMap[eState.OwnerID]
 		if !ok {
 			c = defaultColor
@@ -3224,8 +3229,7 @@ func renderVectorFrame(state GameState, topo Topology, step, total int, filename
 		if !ok {
 			continue
 		}
-		vx := (float64(vTopo.X))*scaleX + offsetX
-		vy := (float64(vTopo.Y))*scaleY + offsetY
+		vx, vy := getCoord(float64(vTopo.X), float64(vTopo.Y))
 		c, ok := playerColorMap[vState.OwnerID]
 		if !ok {
 			c = defaultColor
