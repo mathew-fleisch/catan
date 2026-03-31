@@ -4,61 +4,79 @@ set -e
 FFMPEG="/usr/bin/ffmpeg"
 MODE=${1:-playback}
 
-# 1. Render PNG frames directly from Go binary
+# Default settings
+FPS=5
+FRAME_DIR="frames"
+OUT_VIDEO="catan_replay.mp4"
+OUT_GIF="catan_preview.gif"
+
 if [ "$MODE" == "vector" ]; then
     echo "Rendering VECTOR frames..."
     ./catan dm vector-playback
     FRAME_DIR="vector_frames"
     OUT_VIDEO="vector_replay.mp4"
     OUT_GIF="vector_preview.gif"
-    FPS=5
 elif [ "$MODE" == "simulate" ]; then
-    echo "Simulating full game and rendering PNG frames (both types)..."
+    echo "Simulating full game and rendering BOTH TUI and VECTOR frames..."
     ./catan dm simulate
     ./catan dm vector-playback
-    FRAME_DIR="frames"
-    OUT_VIDEO="catan_replay.mp4"
-    OUT_GIF="catan_preview.gif"
-    FPS=5
+    # Default playback behavior for simulate: MP4 from vector, GIF from TUI
+    # We'll handle the freezing below manually to ensure both are covered
 elif [ "$MODE" == "vector-simulate" ]; then
     echo "Simulating full game and rendering VECTOR frames..."
     ./catan dm vector-simulate
     FRAME_DIR="vector_frames"
     OUT_VIDEO="vector_replay.mp4"
     OUT_GIF="vector_preview.gif"
-    FPS=5
 else
-    echo "Rendering PNG frames from existing game log..."
+    echo "Rendering BOTH TUI and VECTOR frames for hybrid output..."
     ./catan dm playback
-    FRAME_DIR="frames"
-    OUT_VIDEO="catan_replay.mp4"
-    OUT_GIF="catan_preview.gif"
-    FPS=2
+    ./catan dm vector-playback
 fi
 
-# 2. Freeze the last frame (Duplicate it 15 times for pause at end)
-echo "Freezing last frame in $FRAME_DIR..."
-LAST_FRAME=$(ls $FRAME_DIR/frame_*.png | sort | tail -n 1)
-LAST_NUM=$(echo $(basename $LAST_FRAME) | grep -oP '\d+' | head -n 1)
-LAST_VAL=$((10#$LAST_NUM))
+# Function to freeze last frame
+freeze_frames() {
+    local dir=$1
+    echo "Freezing last frame in $dir..."
+    local last_frame=$(ls $dir/frame_*.png | sort | tail -n 1)
+    local last_num=$(echo $(basename $last_frame) | grep -oP '\d+' | head -n 1)
+    local last_val=$((10#$last_num))
 
-for i in {1..15}; do
-    NEW_VAL=$((LAST_VAL + i))
-    NEW_NUM=$(printf "%04d" $NEW_VAL)
-    cp "$LAST_FRAME" "$FRAME_DIR/frame_$NEW_NUM.png"
-done
+    for i in {1..15}; do
+        local new_val=$((last_val + i))
+        local new_num=$(printf "%04d" $new_val)
+        cp "$last_frame" "$dir/frame_$new_num.png"
+    done
+}
 
-# 3. Generate MP4
-echo "Generating High-Quality MP4: $OUT_VIDEO..."
-$FFMPEG -y -framerate $FPS -i $FRAME_DIR/frame_%04d.png \
-    -c:v libx264 -pix_fmt yuv420p \
-    $OUT_VIDEO
+# Special case for playback and simulate: produce hybrid assets
+if [ "$MODE" == "playback" ] || [ "$MODE" == "simulate" ]; then
+    freeze_frames "frames"
+    freeze_frames "vector_frames"
 
-# 4. Generate Lightweight Preview GIF
-echo "Generating Lightweight Preview GIF: $OUT_GIF..."
-$FFMPEG -y -framerate $FPS -i $FRAME_DIR/frame_%04d.png \
-    -vf "scale=800:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=64[p];[s1][p]paletteuse" \
-    $OUT_GIF
+    echo "Generating High-Quality MP4 from Vector: catan_replay.mp4..."
+    $FFMPEG -y -framerate $FPS -i vector_frames/frame_%04d.png \
+        -c:v libx264 -pix_fmt yuv420p \
+        catan_replay.mp4
+
+    echo "Generating Lightweight Preview GIF from TUI: catan_preview.gif..."
+    $FFMPEG -y -framerate 2 -i frames/frame_%04d.png \
+        -vf "scale=800:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=64[p];[s1][p]paletteuse" \
+        catan_preview.gif
+else
+    # Standard single-source generation
+    freeze_frames "$FRAME_DIR"
+
+    echo "Generating High-Quality MP4: $OUT_VIDEO..."
+    $FFMPEG -y -framerate $FPS -i $FRAME_DIR/frame_%04d.png \
+        -c:v libx264 -pix_fmt yuv420p \
+        $OUT_VIDEO
+
+    echo "Generating Preview GIF: $OUT_GIF..."
+    $FFMPEG -y -framerate $FPS -i $FRAME_DIR/frame_%04d.png \
+        -vf "scale=800:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=64[p];[s1][p]paletteuse" \
+        $OUT_GIF
+fi
 
 echo "Done!"
-ls -lh $OUT_VIDEO $OUT_GIF
+ls -lh catan_replay.mp4 catan_preview.gif vector_replay.mp4 vector_preview.gif 2>/dev/null || true
