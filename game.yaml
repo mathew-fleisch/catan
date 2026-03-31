@@ -1,14 +1,14 @@
 meta:
     status: setup
-    last_action_timestamp: 1774963653
+    last_action_timestamp: 1774967411
     timeout_seconds: 86400
     max_skips: 3
     turn_order:
         - bot-2
         - bot-3
         - bot-1
-    current_player_id: bot-2
-    phase: setup_1
+    current_player_id: bot-1
+    phase: setup_2
     dev_card_deck:
         - vp
         - knight
@@ -144,11 +144,18 @@ board:
         VC06:
             owner_id: bot-2
             type: settlement
+        VE06:
+            owner_id: bot-1
+            type: settlement
     edges:
         ED05:
             owner_id: bot-2
         EE05:
             owner_id: bot-2
+        EF05:
+            owner_id: bot-1
+        EG05:
+            owner_id: bot-1
     ports:
         P1: brick
         P2: "3:1"
@@ -168,7 +175,7 @@ players:
         sheep: 0
         wheat: 0
         wood: 0
-      vp: 0
+      vp: 1
       skip_count: 0
       dev_cards:
         knight: 0
@@ -258,3 +265,27 @@ log:
       player_id: bot-2
       action: build_road
       data: EE05
+    - timestamp: 1774967146
+      player_id: bot-2
+      action: end_turn
+      data: ""
+    - timestamp: 1774967384
+      player_id: bot-3
+      action: end_turn
+      data: ""
+    - timestamp: 1774967390
+      player_id: bot-1
+      action: build_settlement
+      data: VE06
+    - timestamp: 1774967392
+      player_id: bot-1
+      action: build_road
+      data: EF05
+    - timestamp: 1774967394
+      player_id: bot-1
+      action: build_road
+      data: EG05
+    - timestamp: 1774967411
+      player_id: bot-1
+      action: end_turn
+      data: ""

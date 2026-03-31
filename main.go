@@ -2407,13 +2407,7 @@ func (m model) renderToBuffer() *GridBuffer {
 }
 
 func (m model) renderBoard() string {
-	rawLines := strings.Split(m.board, "\n")
-	var lines []string
-	for _, line := range rawLines {
-		if strings.TrimSpace(line) != "" {
-			lines = append(lines, line)
-		}
-	}
+	lines := strings.Split(m.board, "\n")
 	grid := make([][]string, len(lines))
 
 	for i, line := range lines {
@@ -2471,7 +2465,45 @@ func (m model) renderBoard() string {
 		}
 	}
 
-	// 0. Render Ports (Replace P1-P9 markers from board.txt)
+	// 1. Render Hexes (Background)
+	for _, hState := range m.state.Board.Hexes {
+		var avgX, avgY float64
+		verts := strings.Split(hState.Vertices, ",")
+		for _, vID := range verts {
+			v := m.topology.Vertices[vID]
+			avgX += float64(v.X)
+			avgY += float64(v.Y)
+		}
+		cX := int(2.0 * (avgX / 6.0)) + 1
+		cY := int(1.5 * (avgY / 6.0)) + 3 // Adjusting to the vertex-y line
+
+		res, ok := resourceStyles[hState.Resource]
+		if !ok {
+			res = resourceStyles["desert"]
+		}
+		style := lipgloss.NewStyle().Foreground(res.Color)
+
+		// Top lines
+		applyStyle(cX-2, cY-2, 5, style, "▟███▙")
+		applyStyle(cX-3, cY-1, 7, style, "▟█████▙")
+
+		// Middle line
+		var midStr string
+		if hState.Robber {
+			midStr = "▟██ ROB ▙"
+		} else if hState.Token > 0 {
+			midStr = fmt.Sprintf("▟█%02d█%s█▙", hState.Token, res.Icon)
+		} else {
+			midStr = fmt.Sprintf("▟███%s██▙", res.Icon)
+		}
+		applyStyle(cX-4, cY, 9, style, midStr)
+
+		// Bottom lines
+		applyStyle(cX-4, cY+1, 9, style, "▜███████▛")
+		applyStyle(cX-3, cY+2, 7, style, "▜█████▛")
+	}
+
+	// 2. Render Ports (Replace P1-P9 markers from board.txt)
 	for y := 0; y < len(grid); y++ {
 		for x := 0; x < len(grid[y]); x++ {
 			if grid[y][x] == "P" {
@@ -2517,27 +2549,7 @@ func (m model) renderBoard() string {
 		}
 	}
 
-	// 1. Render Vertices
-	for id, vState := range m.state.Board.Vertices {
-		topo, ok := m.topology.Vertices[id]
-		if !ok {
-			continue
-		}
-		style, owned := m.playerStyles[vState.OwnerID]
-		if !owned {
-			continue
-		}
-
-		charX := 2*topo.X + 3
-		charY := int(1.5*float64(topo.Y)) + 1
-		symbol := activeTheme.Board["settlement"]
-		if vState.Type == "city" {
-			symbol = activeTheme.Board["city"]
-		}
-		applyStyle(charX, charY, stringVisualWidth(symbol), style, symbol)
-	}
-
-	// 2. Render Edges
+	// 3. Render Edges
 	for id, eState := range m.state.Board.Edges {
 		topo, ok := m.topology.Edges[id]
 		if !ok {
@@ -2548,13 +2560,13 @@ func (m model) renderBoard() string {
 			continue
 		}
 
-		charX := 2*topo.X + 3
+		charX := 2*topo.X + 1
 		if topo.Y%2 == 0 { // Horizontal
-			charY := int(1.5*float64(topo.Y)) + 1
+			charY := int(1.5*float64(topo.Y)) + 3
 			applyStyle(charX-1, charY, 3, style, "───")
 		} else { // Diagonal
-			yTop := int(1.5*float64(topo.Y-1)) + 2
-			yBot := int(1.5*float64(topo.Y-1)) + 3
+			yTop := int(1.5*float64(topo.Y-1)) + 4
+			yBot := int(1.5*float64(topo.Y-1)) + 5
 			v1 := m.topology.Vertices[topo.AdjacentVertices[0]]
 			v2 := m.topology.Vertices[topo.AdjacentVertices[1]]
 			
@@ -2573,7 +2585,27 @@ func (m model) renderBoard() string {
 		}
 	}
 
-	// 3. Render Cursor (OVERRIDE)
+	// 4. Render Vertices
+	for id, vState := range m.state.Board.Vertices {
+		topo, ok := m.topology.Vertices[id]
+		if !ok {
+			continue
+		}
+		style, owned := m.playerStyles[vState.OwnerID]
+		if !owned {
+			continue
+		}
+
+		charX := 2*topo.X + 1
+		charY := int(1.5*float64(topo.Y)) + 3
+		symbol := activeTheme.Board["settlement"]
+		if vState.Type == "city" {
+			symbol = activeTheme.Board["city"]
+		}
+		applyStyle(charX, charY, stringVisualWidth(symbol), style, symbol)
+	}
+
+	// 5. Render Cursor (OVERRIDE)
 	effectiveCursorStyle := cursorStyle
 	if m.state.Meta.Status == "setup" {
 		for i, p := range m.state.Players {
@@ -2588,8 +2620,8 @@ func (m model) renderBoard() string {
 
 	if m.selectedType == "vertex" {
 		topo := m.topology.Vertices[m.selectedID]
-		charX := 2*topo.X + 3
-		charY := int(1.5*float64(topo.Y)) + 1
+		charX := 2*topo.X + 1
+		charY := int(1.5*float64(topo.Y)) + 3
 
 		symbol := activeTheme.Board["settlement"]
 		if vState, ok := m.state.Board.Vertices[m.selectedID]; ok && vState.Type == "city" {
@@ -2598,13 +2630,13 @@ func (m model) renderBoard() string {
 		applyStyle(charX, charY, stringVisualWidth(symbol), effectiveCursorStyle, symbol)
 	} else if m.selectedType == "edge" {
 		topo := m.topology.Edges[m.selectedID]
-		charX := 2*topo.X + 3
+		charX := 2*topo.X + 1
 		if topo.Y%2 == 0 { // Horizontal
-			charY := int(1.5*float64(topo.Y)) + 1
+			charY := int(1.5*float64(topo.Y)) + 3
 			applyStyle(charX-1, charY, 3, effectiveCursorStyle, "───")
 		} else { // Diagonal
-			yTop := int(1.5*float64(topo.Y-1)) + 2
-			yBot := int(1.5*float64(topo.Y-1)) + 3
+			yTop := int(1.5*float64(topo.Y-1)) + 4
+			yBot := int(1.5*float64(topo.Y-1)) + 5
 			v1 := m.topology.Vertices[topo.AdjacentVertices[0]]
 			v2 := m.topology.Vertices[topo.AdjacentVertices[1]]
 			slope := "╲"
@@ -2619,44 +2651,6 @@ func (m model) renderBoard() string {
 				applyStyle(charX, yBot, 1, effectiveCursorStyle, slope)
 			}
 		}
-	}
-
-	// 4. Render Hexes
-	for _, hState := range m.state.Board.Hexes {
-		var avgX, avgY float64
-		verts := strings.Split(hState.Vertices, ",")
-		for _, vID := range verts {
-			v := m.topology.Vertices[vID]
-			avgX += float64(v.X)
-			avgY += float64(v.Y)
-		}
-		cX := int(2.0 * (avgX / 6.0)) + 3
-		cY := int(1.5 * (avgY / 6.0)) + 1 // Adjusting to the vertex-y line
-
-		res, ok := resourceStyles[hState.Resource]
-		if !ok {
-			res = resourceStyles["desert"]
-		}
-		style := lipgloss.NewStyle().Foreground(res.Color)
-
-		// Top lines
-		applyStyle(cX-2, cY-2, 5, style, "▟███▙")
-		applyStyle(cX-3, cY-1, 7, style, "▟█████▙")
-
-		// Middle line
-		var midStr string
-		if hState.Robber {
-			midStr = "▟██ ROB ▙"
-		} else if hState.Token > 0 {
-			midStr = fmt.Sprintf("▟█%02d█%s█▙", hState.Token, res.Icon)
-		} else {
-			midStr = fmt.Sprintf("▟███%s██▙", res.Icon)
-		}
-		applyStyle(cX-4, cY, 9, style, midStr)
-
-		// Bottom lines
-		applyStyle(cX-4, cY+1, 9, style, "▜███████▛")
-		applyStyle(cX-3, cY+2, 7, style, "▜█████▛")
 	}
 
 	// Reconstruct the board
@@ -2841,7 +2835,7 @@ func (m model) View() string {
 	}
 
 	// Board box
-	boardView := borderStyle.Copy().
+	boardView := lipgloss.NewStyle().
 		Render(m.renderBoard()) // Removed MarginTop(1)
 
 	// Dashboard box

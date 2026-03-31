@@ -7,29 +7,29 @@ MODE=${1:-playback}
 # 1. Render PNG frames directly from Go binary
 if [ "$MODE" == "vector" ]; then
     echo "Rendering VECTOR frames..."
-    ./catan-go dm vector-playback
+    ./catan dm vector-playback
     FRAME_DIR="vector_frames"
     OUT_VIDEO="vector_replay.mp4"
     OUT_GIF="vector_preview.gif"
     FPS=5
 elif [ "$MODE" == "simulate" ]; then
     echo "Simulating full game and rendering PNG frames (both types)..."
-    ./catan-go dm simulate
-    ./catan-go dm vector-playback
+    ./catan dm simulate
+    ./catan dm vector-playback
     FRAME_DIR="frames"
     OUT_VIDEO="catan_replay.mp4"
     OUT_GIF="catan_preview.gif"
     FPS=5
 elif [ "$MODE" == "vector-simulate" ]; then
     echo "Simulating full game and rendering VECTOR frames..."
-    ./catan-go dm vector-simulate
+    ./catan dm vector-simulate
     FRAME_DIR="vector_frames"
     OUT_VIDEO="vector_replay.mp4"
     OUT_GIF="vector_preview.gif"
     FPS=5
 else
     echo "Rendering PNG frames from existing game log..."
-    ./catan-go dm playback
+    ./catan dm playback
     FRAME_DIR="frames"
     OUT_VIDEO="catan_replay.mp4"
     OUT_GIF="catan_preview.gif"
