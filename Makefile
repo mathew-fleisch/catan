@@ -31,8 +31,8 @@ run: build ## Build and run the catan TUI
 .PHONY: clean
 clean: ## Remove binaries and generated frames
 	rm -f $(BINARY)
-	rm -rf frames/ vector_frames/
-	rm -f catan_preview.gif catan_replay.mp4 vector_preview.gif vector_replay.mp4
+	rm -rf frames/
+	rm -f catan_preview.gif catan_replay.mp4
 
 ##@ DM Actions
 
@@ -44,23 +44,23 @@ playback: build ## Render TUI frames from existing game log
 simulate: build ## Simulate a full game and render TUI frames
 	./$(BINARY) dm simulate
 
-.PHONY: vector-playback
-vector-playback: build ## Render vector frames from existing game log
-	./$(BINARY) dm vector-playback
-
-.PHONY: vector-simulate
-vector-simulate: build ## Simulate a full game and render vector frames
-	./$(BINARY) dm vector-simulate
-
 ##@ Asset Generation
 
+.PHONY: clean-frames
+clean-frames: ## Remove temporary frame directories
+	rm -rf frames/
+
 .PHONY: gif
-gif: build ## Generate MP4 and GIF assets (hybrid TUI/Vector)
+gif: build clean-frames ## Generate MP4 and GIF assets from log
 	./generate_gif.sh playback
 
-.PHONY: vector-gif
-vector-gif: build ## Generate MP4 and GIF assets (Vector only)
-	./generate_gif.sh vector
+.PHONY: mp4
+mp4: build clean-frames ## Generate MP4 asset from log
+	./generate_gif.sh mp4
+
+.PHONY: simulate-assets
+simulate-assets: build clean-frames ## Simulate a fresh game and generate assets
+	./generate_gif.sh simulate
 
 ##@ Server
 

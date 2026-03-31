@@ -4,7 +4,7 @@ set -e
 FFMPEG="/usr/bin/ffmpeg"
 MODE=${1:-playback}
 
-# Default settings
+# Default settings for TUI
 FPS=5
 
 # Function to freeze last frame
@@ -46,46 +46,32 @@ render_gif() {
         $output_file
 }
 
-if [ "$MODE" == "vector" ]; then
-    echo "Rendering VECTOR frames only..."
-    ./catan dm vector-playback
-    freeze_frames "vector_frames"
-    render_video "vector_frames" "vector_replay.mp4" $FPS
-    render_gif "vector_frames" "vector_preview.gif" $FPS
+if [ "$MODE" == "mp4" ]; then
+    echo "Rendering TUI MP4 only..."
+    ./catan dm playback
+    freeze_frames "frames"
+    render_video "frames" "catan_replay.mp4" $FPS
 
-elif [ "$MODE" == "vector-simulate" ]; then
-    echo "Simulating and rendering VECTOR frames only..."
-    ./catan dm vector-simulate
-    freeze_frames "vector_frames"
-    render_video "vector_frames" "vector_replay.mp4" $FPS
-    render_gif "vector_frames" "vector_preview.gif" $FPS
+elif [ "$MODE" == "gif" ]; then
+    echo "Rendering TUI GIF only..."
+    ./catan dm playback
+    freeze_frames "frames"
+    render_gif "frames" "catan_preview.gif" $FPS
 
 elif [ "$MODE" == "simulate" ]; then
-    echo "Simulating and rendering BOTH TUI and VECTOR frames..."
+    echo "Simulating and rendering TUI assets..."
     ./catan dm simulate
-    ./catan dm vector-playback
     freeze_frames "frames"
-    freeze_frames "vector_frames"
-    # TUI Assets
-    render_video "frames" "catan_replay.mp4" 2
-    render_gif "frames" "catan_preview.gif" 2
-    # Vector Assets
-    render_video "vector_frames" "vector_replay.mp4" $FPS
-    render_gif "vector_frames" "vector_preview.gif" $FPS
+    render_video "frames" "catan_replay.mp4" $FPS
+    render_gif "frames" "catan_preview.gif" $FPS
 
 else
-    echo "Rendering BOTH TUI and VECTOR frames for hybrid output..."
+    echo "Rendering TUI playback (MP4 and GIF)..."
     ./catan dm playback
-    ./catan dm vector-playback
     freeze_frames "frames"
-    freeze_frames "vector_frames"
-    # TUI Assets (Primary)
-    render_video "frames" "catan_replay.mp4" 2
-    render_gif "frames" "catan_preview.gif" 2
-    # Vector Assets (Secondary)
-    render_video "vector_frames" "vector_replay.mp4" $FPS
-    render_gif "vector_frames" "vector_preview.gif" $FPS
+    render_video "frames" "catan_replay.mp4" $FPS
+    render_gif "frames" "catan_preview.gif" $FPS
 fi
 
 echo "Done!"
-ls -lh catan_replay.mp4 catan_preview.gif vector_replay.mp4 vector_preview.gif 2>/dev/null || true
+ls -lh catan_replay.mp4 catan_preview.gif 2>/dev/null || true

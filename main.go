@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"math"
 	"math/rand"
@@ -16,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fogleman/gg"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -26,8 +26,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+//go:embed font.ttf
+var defaultFont []byte
+
 type Theme struct {
 	Resources map[string]string `yaml:"resources"`
+	Colors    map[string]string `yaml:"colors"`
 	Board     map[string]string `yaml:"board"`
 	UI        map[string]string `yaml:"ui"`
 	Widths    map[string]int    `yaml:"widths"`
@@ -42,6 +46,9 @@ type ThemeConfig struct {
 var activeTheme = Theme{
 	Resources: map[string]string{
 		"wood": "W", "brick": "B", "sheep": "s", "wheat": "w", "ore": "O", "desert": "D",
+	},
+	Colors: map[string]string{
+		"wood": "#2e7d32", "brick": "#c62828", "sheep": "#9ccc65", "wheat": "#fbc02d", "ore": "#78909c", "desert": "#555555",
 	},
 	Board: map[string]string{
 		"port": "S", "settlement": "o", "city": "H", "robber": "X",
@@ -74,12 +81,15 @@ func loadTheme() {
 		resolveChars(theme.UI)
 
 		activeTheme = theme
-		// Update resource styles with new icons
+		// Update resource styles with new icons and colors
 		for k, v := range resourceStyles {
 			if icon, ok := activeTheme.Resources[k]; ok {
 				v.Icon = icon
-				resourceStyles[k] = v
 			}
+			if hex, ok := activeTheme.Colors[k]; ok {
+				v.Color = lipgloss.Color(hex)
+			}
+			resourceStyles[k] = v
 		}
 	}
 }
@@ -113,12 +123,12 @@ var (
 		Icon  string
 		Color lipgloss.Color
 	}{
-		"wood":   {activeTheme.Resources["wood"], lipgloss.Color("10")}, // Green
-		"brick":  {activeTheme.Resources["brick"], lipgloss.Color("9")},  // Red
-		"sheep":  {activeTheme.Resources["sheep"], lipgloss.Color("14")}, // Cyan
-		"wheat":  {activeTheme.Resources["wheat"], lipgloss.Color("11")}, // Yellow
-		"ore":    {activeTheme.Resources["ore"], lipgloss.Color("13")},   // Magenta
-		"desert": {activeTheme.Resources["desert"], lipgloss.Color("7")}, // White/Grey
+		"wood":   {activeTheme.Resources["wood"], lipgloss.Color(activeTheme.Colors["wood"])},
+		"brick":  {activeTheme.Resources["brick"], lipgloss.Color(activeTheme.Colors["brick"])},
+		"sheep":  {activeTheme.Resources["sheep"], lipgloss.Color(activeTheme.Colors["sheep"])},
+		"wheat":  {activeTheme.Resources["wheat"], lipgloss.Color(activeTheme.Colors["wheat"])},
+		"ore":    {activeTheme.Resources["ore"], lipgloss.Color(activeTheme.Colors["ore"])},
+		"desert": {activeTheme.Resources["desert"], lipgloss.Color(activeTheme.Colors["desert"])},
 	}
 
 	cursorStyle = lipgloss.NewStyle().
@@ -1523,6 +1533,32 @@ func (s *GameState) GetTotalResources(resType string) int {
 		total += p.Resources[resType]
 	}
 	return total
+}
+
+func (s *GameState) GetRollResources(roll int) map[string]map[string]int {
+	demand := make(map[string]map[string]int) // resType -> playerID -> count
+	if roll == 7 || roll <= 0 {
+		return demand
+	}
+
+	for _, h := range s.Board.Hexes {
+		if h.Token == roll && !h.Robber {
+			verts := strings.Split(h.Vertices, ",")
+			for _, vID := range verts {
+				if v, ok := s.Board.Vertices[vID]; ok && v.OwnerID != "" && v.OwnerID != "null" {
+					amount := 1
+					if v.Type == "city" {
+						amount = 2
+					}
+					if demand[h.Resource] == nil {
+						demand[h.Resource] = make(map[string]int)
+					}
+					demand[h.Resource][v.OwnerID] += amount
+				}
+			}
+		}
+	}
+	return demand
 }
 
 // Add a non-method validation helper for simulation
@@ -2953,20 +2989,51 @@ func (m model) View() string {
 	specialVPSB.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render(roadStr) + "\n")
 	specialVPView := sectionStyle.Copy().Height(4).Render(specialVPSB.String())
 
-	// Last Roll Section
-	var lastRollSB strings.Builder
-	lastRollSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("LAST ROLL") + "\n")
+	// Roll Section
+	var rollSB strings.Builder
+	rollSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("CURRENT ROLL") + "\n")
 	if m.state.Meta.LastRoll1 > 0 {
-		diceStyle := lipgloss.NewStyle().Bold(true).SetString(fmt.Sprintf(" %d + %d = %d ",
-			m.state.Meta.LastRoll1, m.state.Meta.LastRoll2, m.state.Meta.LastRoll1+m.state.Meta.LastRoll2))
-		if m.state.Meta.LastRoll1+m.state.Meta.LastRoll2 == 7 {
-			diceStyle = diceStyle.Foreground(lipgloss.Color("9"))
+		d1 := m.state.Meta.LastRoll1
+		d2 := m.state.Meta.LastRoll2
+		total := d1 + d2
+		
+		dice1 := toDice(d1)
+		dice2 := toDice(d2)
+		
+		rollView := lipgloss.JoinHorizontal(lipgloss.Center,
+			lipgloss.NewStyle().Padding(0, 1).Render(dice1),
+			lipgloss.NewStyle().Bold(true).Render(" + "),
+			lipgloss.NewStyle().Padding(0, 1).Render(dice2),
+			lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf(" = %d", total)),
+		)
+		
+		if total == 7 {
+			rollView = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(rollView)
 		}
-		lastRollSB.WriteString(diceStyle.String() + "\n")
+		rollSB.WriteString(rollView + "\n")
+
+		// Resources gained
+		gains := m.state.GetRollResources(total)
+		if len(gains) > 0 {
+			playerGains := make(map[string][]string)
+			for res, players := range gains {
+				for pID, count := range players {
+					style := resourceStyles[res]
+					playerGains[pID] = append(playerGains[pID], fmt.Sprintf("%d%s", count, style.Icon))
+				}
+			}
+			for pID, resList := range playerGains {
+				rollSB.WriteString(fmt.Sprintf("%s: %s\n", pID, strings.Join(resList, ", ")))
+			}
+		} else if total != 7 {
+			rollSB.WriteString("No resources produced.\n")
+		} else {
+			rollSB.WriteString("ROBBER ACTIVE!\n")
+		}
 	} else {
-		lastRollSB.WriteString("No roll yet.\n")
+		rollSB.WriteString("No roll yet.\n")
 	}
-	lastRollView := sectionStyle.Copy().Height(3).Render(lastRollSB.String())
+	lastRollView := sectionStyle.Copy().Height(6).Render(rollSB.String())
 
 	// 6. Players Section
 	var playersSB strings.Builder
@@ -3099,183 +3166,6 @@ func (m model) View() string {
 	return view
 }
 
-func renderVectorFrame(state GameState, topo Topology, step, total int, filename string) {
-	const W = 1400
-	const H = 900
-	const BoardWidth = 900
-	const HexRadius = 55.0
-
-	dc := gg.NewContext(W, H)
-	dc.SetRGB(0.05, 0.05, 0.05)
-	dc.Clear()
-
-	fontPath := "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
-	dc.LoadFontFace(fontPath, 20)
-
-	offsetX := BoardWidth / 2.0
-	offsetY := H / 2.0
-	scaleX := 32.0
-	scaleY := 28.0 // Adjusted for visual balance
-
-	// Center the coordinates: x range is 2-24 (avg 13), y range is 0-20 (avg 10)
-	// cX = (topoX - 13) * scaleX + offsetX
-	// cY = (topoY - 10) * scaleY + offsetY
-	
-	getCoord := func(tx, ty float64) (float64, float64) {
-		return (tx-13.0)*scaleX + offsetX, (ty-10.0)*scaleY + offsetY
-	}
-
-	playerColorMap := make(map[string]color.Color)
-	playerColorsVec := []color.RGBA{
-		{255, 50, 50, 255},  // Red
-		{50, 255, 50, 255},  // Green
-		{50, 100, 255, 255}, // Blue
-		{255, 255, 50, 255}, // Yellow
-	}
-	for i, p := range state.Players {
-		playerColorMap[p.ID] = playerColorsVec[i%len(playerColorsVec)]
-	}
-	defaultColor := color.RGBA{200, 200, 200, 255}
-
-	dc.SetRGB(0.1, 0.1, 0.1)
-	dc.DrawRectangle(10, 10, BoardWidth-20, H-20)
-	dc.Fill()
-
-	for _, hState := range state.Board.Hexes {
-		var avgX, avgY float64
-		verts := strings.Split(hState.Vertices, ",")
-		count := 0
-		for _, vID := range verts {
-			if v, ok := topo.Vertices[vID]; ok {
-				avgX += float64(v.X)
-				avgY += float64(v.Y)
-				count++
-			}
-		}
-		if count == 0 {
-			continue
-		}
-		cX, cY := getCoord(avgX/float64(count), avgY/float64(count))
-
-		dc.DrawRegularPolygon(6, cX, cY, HexRadius, 0)
-		switch hState.Resource {
-		case "wood":
-			dc.SetHexColor("#2e7d32")
-		case "brick":
-			dc.SetHexColor("#c62828")
-		case "sheep":
-			dc.SetHexColor("#9ccc65")
-		case "wheat":
-			dc.SetHexColor("#fbc02d")
-		case "ore":
-			dc.SetHexColor("#78909c")
-		default:
-			dc.SetHexColor("#555555")
-		}
-		dc.FillPreserve()
-		dc.SetRGB(0, 0, 0)
-		dc.SetLineWidth(1)
-		dc.Stroke()
-
-		if hState.Token > 0 {
-			dc.SetRGB(1, 1, 1)
-			dc.DrawCircle(cX, cY, 18)
-			dc.Fill()
-			dc.SetRGB(0, 0, 0)
-			dc.DrawStringAnchored(fmt.Sprintf("%d", hState.Token), cX, cY-5, 0.5, 0.5)
-			dc.SetRGB(0.2, 0.2, 0.2)
-			dc.DrawStringAnchored(activeTheme.Resources[hState.Resource], cX, cY+12, 0.5, 0.5)
-		}
-		if hState.Robber {
-			dc.SetRGB(0, 0, 0)
-			dc.DrawCircle(cX, cY+20, 12)
-			dc.Fill()
-			dc.SetRGB(1, 1, 1)
-			dc.DrawStringAnchored(activeTheme.Board["robber"], cX, cY+20, 0.5, 0.5)
-		}
-	}
-
-	for id, eState := range state.Board.Edges {
-		if eState.OwnerID == "" {
-			continue
-		}
-		eTopo, ok := topo.Edges[id]
-		if !ok || len(eTopo.AdjacentVertices) < 2 {
-			continue
-		}
-		v1 := topo.Vertices[eTopo.AdjacentVertices[0]]
-		v2 := topo.Vertices[eTopo.AdjacentVertices[1]]
-		x1, y1 := getCoord(float64(v1.X), float64(v1.Y))
-		x2, y2 := getCoord(float64(v2.X), float64(v2.Y))
-		c, ok := playerColorMap[eState.OwnerID]
-		if !ok {
-			c = defaultColor
-		}
-		dc.SetColor(c)
-		dc.SetLineWidth(10)
-		dc.DrawLine(x1, y1, x2, y2)
-		dc.Stroke()
-		dc.SetRGB(0, 0, 0)
-		dc.SetLineWidth(1)
-		dc.DrawLine(x1, y1, x2, y2)
-		dc.Stroke()
-	}
-
-	for id, vState := range state.Board.Vertices {
-		if vState.OwnerID == "" {
-			continue
-		}
-		vTopo, ok := topo.Vertices[id]
-		if !ok {
-			continue
-		}
-		vx, vy := getCoord(float64(vTopo.X), float64(vTopo.Y))
-		c, ok := playerColorMap[vState.OwnerID]
-		if !ok {
-			c = defaultColor
-		}
-		dc.SetColor(c)
-		dc.DrawCircle(vx, vy, 15)
-		dc.Fill()
-		dc.SetRGB(0, 0, 0)
-		icon := activeTheme.Board["settlement"]
-		if vState.Type == "city" {
-			icon = activeTheme.Board["city"]
-		}
-		dc.DrawStringAnchored(icon, vx, vy, 0.5, 0.5)
-	}
-
-	dashX := float64(BoardWidth + 20)
-	dc.SetRGB(0.15, 0.15, 0.15)
-	dc.DrawRectangle(dashX, 10, W-dashX-10, H-20)
-	dc.Fill()
-	dc.SetRGB(0.4, 0.4, 0.4)
-	dc.DrawRectangle(dashX, 10, W-dashX-10, H-20)
-	dc.Stroke()
-	dc.SetRGB(1, 1, 1)
-	dc.DrawStringAnchored("GAME DASHBOARD", dashX+(W-dashX)/2, 50, 0.5, 0.5)
-	dc.DrawString(fmt.Sprintf("Step: %d / %d", step, total), dashX+20, 120)
-	dc.DrawString(fmt.Sprintf("Phase: %s", strings.ToUpper(state.Meta.Phase)), dashX+20, 150)
-	yPos := 210.0
-	for i, p := range state.Players {
-		dc.SetColor(playerColorsVec[i%len(playerColorsVec)])
-		dc.DrawCircle(dashX+30, yPos-5, 10)
-		dc.Fill()
-		dc.SetRGB(1, 1, 1)
-		indicator := ""
-		if p.ID == state.Meta.CurrentPlayerID {
-			indicator = " " + activeTheme.UI["player_cursor"]
-		}
-		dc.DrawString(fmt.Sprintf("%s (VP: %d)%s", p.ID, p.VP, indicator), dashX+50, yPos)
-		yPos += 25
-		resStr := fmt.Sprintf("%s:%d %s:%d %s:%d %s:%d %s:%d", activeTheme.Resources["wood"], p.Resources["wood"], activeTheme.Resources["brick"], p.Resources["brick"], activeTheme.Resources["sheep"], p.Resources["sheep"], activeTheme.Resources["wheat"], p.Resources["wheat"], activeTheme.Resources["ore"], p.Resources["ore"])
-		dc.SetRGB(0.8, 0.8, 0.8)
-		dc.DrawString(resStr, dashX+50, yPos)
-		yPos += 35
-	}
-	dc.SavePNG(filename)
-}
-
 func main() {
 	loadTheme()
 	if len(os.Args) > 1 && os.Args[1] == "dm" {
@@ -3346,15 +3236,6 @@ func handleDMCommand(args []string) {
 	case "playback":
 		handlePlayback(state, topo)
 		return
-	case "vector-playback":
-		history := state.Replay(&topo)
-		os.MkdirAll("vector_frames", 0755)
-		for i, s := range history {
-			filename := fmt.Sprintf("vector_frames/frame_%04d.png", i)
-			renderVectorFrame(s, topo, i+1, len(history), filename)
-		}
-		fmt.Printf("Rendered %d vector frames to vector_frames/\n", len(history))
-		return
 	case "simulate":
 		history := state.Simulate(&topo)
 		os.MkdirAll("frames", 0755)
@@ -3401,15 +3282,6 @@ func handleDMCommand(args []string) {
 			f.Close()
 		}
 		fmt.Printf("Simulated game and rendered %d frames to frames/\n", len(history))
-		return
-	case "vector-simulate":
-		history := state.Simulate(&topo)
-		os.MkdirAll("vector_frames", 0755)
-		for i, s := range history {
-			filename := fmt.Sprintf("vector_frames/frame_%04d.png", i)
-			renderVectorFrame(s, topo, i+1, len(history), filename)
-		}
-		fmt.Printf("Simulated game and rendered %d vector frames to vector_frames/\n", len(history))
 		return
 
 	case "move":
@@ -3479,16 +3351,38 @@ func handlePlayback(state GameState, topo Topology) {
 	fmt.Printf("Rendered %d frames to frames/\n", len(history))
 }
 
-func renderToImage(buffer *GridBuffer, charWidth, charHeight int) (image.Image, error) {
-	// Load font
-	fontPath := "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
-	fontBytes, err := os.ReadFile(fontPath)
-	if err != nil {
-		return nil, fmt.Errorf("could not read font: %v", err)
+func toDice(n int) string {
+	switch n {
+	case 1: return "⚀"
+	case 2: return "⚁"
+	case 3: return "⚂"
+	case 4: return "⚃"
+	case 5: return "⚄"
+	case 6: return "⚅"
 	}
-	f, err := opentype.Parse(fontBytes)
+	return fmt.Sprintf("%d", n)
+}
+
+func toASCII(r rune) string {
+	// If the character is a standard printable one, keep it.
+	// We only map specific complex ones if needed for width consistency,
+	// but Noto Sans Mono has great coverage.
+	s := string(r)
+	
+	// Ensure width consistency for problematic characters if any
+	switch s {
+	case "⑩": return "10"
+	case "⑪": return "11"
+	case "⑫": return "12"
+	}
+
+	return s
+}
+
+func renderToImage(buffer *GridBuffer, charWidth, charHeight int) (image.Image, error) {
+	f, err := opentype.Parse(defaultFont)
 	if err != nil {
-		return nil, fmt.Errorf("could not parse font: %v", err)
+		return nil, fmt.Errorf("could not parse embedded font: %v", err)
 	}
 
 	imgWidth := buffer.Width * charWidth
@@ -3530,13 +3424,19 @@ func renderToImage(buffer *GridBuffer, charWidth, charHeight int) (image.Image, 
 
 			// Draw character
 			if cell.Rune != ' ' && cell.Rune != 0 {
+				str := toASCII(cell.Rune)
 				d.Src = &image.Uniform{cell.FG}
+				
+				// Standard center is charWidth/4 for 1 char.
+				// For 2 chars (like "10"), we shift left half a char width more.
+				dotX := fixed.I(posX) + (fixed.I(charWidth) - d.MeasureString(str))/2
+				
 				// Baseline adjustment
 				d.Dot = fixed.Point26_6{
-					X: fixed.I(posX) + fixed.I(charWidth)/4,
+					X: dotX,
 					Y: fixed.I(posY) + fixed.I(charHeight)*3/4,
 				}
-				d.DrawString(string(cell.Rune))
+				d.DrawString(str)
 			}
 		}
 	}

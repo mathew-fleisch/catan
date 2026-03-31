@@ -3,114 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Catan Simulation Playback</title>
+    <title>Catan TUI Playback</title>
     <style>
         body {
             background-color: #0f0f0f;
             color: #e0e0e0;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 40px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            min-height: 100vh;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        h1 {
+            color: #f1c40f;
+            text-transform: uppercase;
+            letter-spacing: 3px;
             margin: 0;
-            padding: 20px;
         }
         .container {
             background-color: #1e1e1e;
-            padding: 30px;
+            padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
-            max-width: 1000px;
-            width: 100%;
             border: 1px solid #333;
-        }
-        h1 {
-            margin-top: 0;
-            color: #f1c40f;
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            border-bottom: 2px solid #f1c40f;
-            padding-bottom: 10px;
-        }
-        h2 {
-            color: #f1c40f;
-            border-left: 4px solid #f1c40f;
-            padding-left: 15px;
-            margin-top: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            max-width: 1240px;
         }
         .video-wrapper {
-            display: flex;
-            justify-content: center;
-            margin: 20px 0;
             background-color: #000;
+            line-height: 0;
             border-radius: 4px;
             overflow: hidden;
-            border: 2px solid #444;
         }
-        video, img {
-            max-width: 100%;
+        video {
+            width: 100%;
             height: auto;
             display: block;
         }
-        .meta {
+        .info {
             margin-top: 20px;
-            font-size: 0.85rem;
-            color: #888;
             display: flex;
-            flex-wrap: wrap;
             justify-content: space-between;
+            color: #888;
+            font-size: 0.9rem;
             border-top: 1px solid #333;
             padding-top: 15px;
-            gap: 10px;
         }
         .tag {
             background-color: #333;
             color: #f1c40f;
-            padding: 2px 8px;
+            padding: 2px 10px;
             border-radius: 4px;
+            font-family: monospace;
             font-weight: bold;
-        }
-        .controls-note {
-            text-align: center;
-            font-size: 0.8rem;
-            color: #666;
-            margin-top: -10px;
-            margin-bottom: 20px;
         }
     </style>
 </head>
 <body>
+    <div class="header">
+        <h1>Catan Terminal Playback</h1>
+        <p style="color: #666;">Authentic Retro-ASCII Simulation</p>
+    </div>
+
     <div class="container">
-        <h1>Catan Simulation Playback</h1>
-        <p style="text-align:center; color: #888; font-size: 0.8rem;">Last Simulation: 2026-03-30 18:30:00 UTC</p>
-        
-        <h2>Standard TUI Playback</h2>
-        <p class="controls-note">Text-based interface simulation at 5fps.</p>
         <div class="video-wrapper">
             <video controls autoplay loop muted poster="catan_preview.gif">
                 <source src="catan_replay.mp4" type="video/mp4">
-                <img src="catan_preview.gif" alt="Catan TUI Preview GIF">
+                <img src="catan_preview.gif" alt="Catan TUI Preview">
             </video>
         </div>
-
-        <h2>Vector Canvas Prototype</h2>
-        <p class="controls-note">Pixel-perfect vector rendering simulation.</p>
-        <div class="video-wrapper">
-            <video controls loop muted poster="vector_preview.gif">
-                <source src="vector_replay.mp4" type="video/mp4">
-                <img src="vector_preview.gif" alt="Catan Vector Preview GIF">
-            </video>
+        <div class="info">
+            <span>Mode: <span class="tag">Standard TUI</span></span>
+            <span>Resolution: <span class="tag">1200x1000</span></span>
+            <span>Font: <span class="tag">Noto Sans Mono (Embedded)</span></span>
         </div>
+    </div>
 
-        <div class="meta">
-            <span>Generated: March 30, 2026</span>
-            <span>TUI Resolution: <span class="tag">800px Wide</span></span>
-            <span>Vector Resolution: <span class="tag">800px Wide</span></span>
-            <span>Mode: <span class="tag">Full Simulation</span></span>
-        </div>
+    <div style="margin-top: 40px; color: #444; font-size: 0.8rem;">
+        &copy; 2026 Catan CLI Engine | Generated via GitHub Actions
     </div>
 </body>
 </html>
