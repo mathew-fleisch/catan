@@ -1,17 +1,18 @@
 BINARY=catan
 SRC=main.go
 GO_BUILD=go build
+PORT=8080
 
 ##@ Misc stuff
 
 .PHONY: help
 help: ## this
 	@echo "+---------------------------------------------------------------+"
-	@echo "|    ____      _                   _____ _   _ _____            |"
-	@echo "|   / ___|__ _| |_ __ _ _ __      |_   _| | | |_   _|           |"
-	@echo "|  | |   / _' | __/ _' | '_ \       | | | | | | | |             |"
-	@echo "|  | |__| (_| | || (_| | | | |      | | | |_| | | |             |"
-	@echo "|   \____\__,_|\__\__,_|_| |_|      |_|  \___/  |_|             |"
+	@echo "|    ____      _                                                |"
+	@echo "|   / ___|__ _| |_ __ _ _ __                                    |"
+	@echo "|  | |   / _' | __/ _' | '_ \                                   |"
+	@echo "|  | |__| (_| | || (_| | | | |                                  | "
+	@echo "|   \____\__,_|\__\__,_|_| |_|                                  |"
 	@echo "|                                                               |"
 	@echo "|  makefile targets                                             |"
 	@echo "+---------------------------------------------------------------+"
@@ -60,3 +61,22 @@ gif: build ## Generate MP4 and GIF assets (hybrid TUI/Vector)
 .PHONY: vector-gif
 vector-gif: build ## Generate MP4 and GIF assets (Vector only)
 	./generate_gif.sh vector
+
+##@ Server
+
+.PHONY: server-start
+server-start: ## Start a local python server to view assets (port 8080)
+	@echo "Starting server on http://localhost:$(PORT)..."
+	@python3 -m http.server $(PORT) > /dev/null 2>&1 & echo $$! > .server.pid
+	@echo "Server started with PID $$(cat .server.pid)"
+
+.PHONY: server-stop
+server-stop: ## Stop the local python server
+	@if [ -f .server.pid ]; then \
+		echo "Stopping server with PID $$(cat .server.pid)..."; \
+		kill $$(cat .server.pid) && rm .server.pid; \
+		echo "Server stopped."; \
+	else \
+		echo "No server PID file found."; \
+		pkill -f "python3 -m http.server $(PORT)" || true; \
+	fi
