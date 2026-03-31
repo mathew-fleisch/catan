@@ -44,7 +44,7 @@ themes:
       ore: "O"
       desert: "D"
     colors:
-      wood: "#2e7d32"
+      wood: "#795548"
       brick: "#c62828"
       sheep: "#9ccc65"
       wheat: "#fbc02d"
@@ -86,7 +86,7 @@ themes:
       ore: "MOUNTAIN"
       desert: "DESERT_ICON"
     colors:
-      wood: "#1b5e20"
+      wood: "#5d4037"
       brick: "#b71c1c"
       sheep: "#8bc34a"
       wheat: "#ffeb3b"

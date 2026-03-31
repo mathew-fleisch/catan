@@ -48,7 +48,7 @@ var activeTheme = Theme{
 		"wood": "W", "brick": "B", "sheep": "s", "wheat": "w", "ore": "O", "desert": "D",
 	},
 	Colors: map[string]string{
-		"wood": "#2e7d32", "brick": "#c62828", "sheep": "#9ccc65", "wheat": "#fbc02d", "ore": "#78909c", "desert": "#555555",
+		"wood": "#795548", "brick": "#c62828", "sheep": "#9ccc65", "wheat": "#fbc02d", "ore": "#78909c", "desert": "#555555",
 	},
 	Board: map[string]string{
 		"port": "S", "settlement": "o", "city": "H", "robber": "X",
