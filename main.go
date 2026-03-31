@@ -2529,7 +2529,7 @@ func (m model) renderBoard() string {
 		}
 
 		charX := 2*topo.X + 3
-		charY := int(1.5*float64(topo.Y)) + 6
+		charY := int(1.5*float64(topo.Y)) + 1
 		symbol := activeTheme.Board["settlement"]
 		if vState.Type == "city" {
 			symbol = activeTheme.Board["city"]
@@ -2550,11 +2550,11 @@ func (m model) renderBoard() string {
 
 		charX := 2*topo.X + 3
 		if topo.Y%2 == 0 { // Horizontal
-			charY := int(1.5*float64(topo.Y)) + 6
+			charY := int(1.5*float64(topo.Y)) + 1
 			applyStyle(charX-1, charY, 3, style, "───")
 		} else { // Diagonal
-			yTop := int(1.5*float64(topo.Y-1)) + 7
-			yBot := int(1.5*float64(topo.Y-1)) + 8
+			yTop := int(1.5*float64(topo.Y-1)) + 2
+			yBot := int(1.5*float64(topo.Y-1)) + 3
 			v1 := m.topology.Vertices[topo.AdjacentVertices[0]]
 			v2 := m.topology.Vertices[topo.AdjacentVertices[1]]
 			
@@ -2589,7 +2589,7 @@ func (m model) renderBoard() string {
 	if m.selectedType == "vertex" {
 		topo := m.topology.Vertices[m.selectedID]
 		charX := 2*topo.X + 3
-		charY := int(1.5*float64(topo.Y)) + 6
+		charY := int(1.5*float64(topo.Y)) + 1
 
 		symbol := activeTheme.Board["settlement"]
 		if vState, ok := m.state.Board.Vertices[m.selectedID]; ok && vState.Type == "city" {
@@ -2600,11 +2600,11 @@ func (m model) renderBoard() string {
 		topo := m.topology.Edges[m.selectedID]
 		charX := 2*topo.X + 3
 		if topo.Y%2 == 0 { // Horizontal
-			charY := int(1.5*float64(topo.Y)) + 6
+			charY := int(1.5*float64(topo.Y)) + 1
 			applyStyle(charX-1, charY, 3, effectiveCursorStyle, "───")
 		} else { // Diagonal
-			yTop := int(1.5*float64(topo.Y-1)) + 7
-			yBot := int(1.5*float64(topo.Y-1)) + 8
+			yTop := int(1.5*float64(topo.Y-1)) + 2
+			yBot := int(1.5*float64(topo.Y-1)) + 3
 			v1 := m.topology.Vertices[topo.AdjacentVertices[0]]
 			v2 := m.topology.Vertices[topo.AdjacentVertices[1]]
 			slope := "╲"
@@ -2631,7 +2631,7 @@ func (m model) renderBoard() string {
 			avgY += float64(v.Y)
 		}
 		cX := int(2.0 * (avgX / 6.0)) + 3
-		cY := int(1.5 * (avgY / 6.0)) + 6 // Adjusting to the vertex-y - 1 line
+		cY := int(1.5 * (avgY / 6.0)) + 1 // Adjusting to the vertex-y line
 
 		res, ok := resourceStyles[hState.Resource]
 		if !ok {
@@ -2845,7 +2845,7 @@ func (m model) View() string {
 		Render(m.renderBoard()) // Removed MarginTop(1)
 
 	// Dashboard box
-	dashboardWidth := m.width - 65 - 2
+	dashboardWidth := m.width - 74 - 2
 	if dashboardWidth < 20 {
 		dashboardWidth = 20
 	}
