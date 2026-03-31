@@ -25,8 +25,8 @@ build: ## Build the catan binary
 	$(GO_BUILD) -o $(BINARY) $(SRC)
 
 .PHONY: run
-run: build ## Build and run the catan TUI
-	./$(BINARY)
+run: ## Run the catan TUI directly
+	go run $(SRC)
 
 .PHONY: clean
 clean: ## Remove binaries and generated frames

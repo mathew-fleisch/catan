@@ -113,10 +113,10 @@ var (
 				Bold(true)
 
 	playerColorStyles = []lipgloss.Style{
-		lipgloss.NewStyle().Foreground(lipgloss.Color("9")),  // Red
-		lipgloss.NewStyle().Foreground(lipgloss.Color("10")), // Green
-		lipgloss.NewStyle().Foreground(lipgloss.Color("12")), // Blue
-		lipgloss.NewStyle().Foreground(lipgloss.Color("11")), // Yellow
+		lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true),  // Red
+		lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true), // Green
+		lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true), // Cyan (replaces hard-to-read blue)
+		lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true), // Yellow
 	}
 
 	resourceStyles = map[string]struct {
@@ -2614,9 +2614,11 @@ func (m model) renderBoard() string {
 			if slope == "╱" {
 				applyStyle(charX+1, yTop, 1, style, slope)
 				applyStyle(charX, yBot, 1, style, slope)
+				applyStyle(charX-1, yBot+1, 1, style, slope)
 			} else {
 				applyStyle(charX-1, yTop, 1, style, slope)
 				applyStyle(charX, yBot, 1, style, slope)
+				applyStyle(charX+1, yBot+1, 1, style, slope)
 			}
 		}
 	}
@@ -3356,16 +3358,32 @@ func toDice(n int) string {
 }
 
 func toASCII(r rune) string {
-	// If the character is a standard printable one, keep it.
-	// We only map specific complex ones if needed for width consistency,
-	// but Noto Sans Mono has great coverage.
 	s := string(r)
 	
-	// Ensure width consistency for problematic characters if any
 	switch s {
+	case "①": return "1"
+	case "②": return "2"
+	case "③": return "3"
+	case "④": return "4"
+	case "⑤": return "5"
+	case "⑥": return "6"
+	case "⑦": return "7"
+	case "⑧": return "8"
+	case "⑨": return "9"
 	case "⑩": return "10"
 	case "⑪": return "11"
 	case "⑫": return "12"
+	case "Ⓐ": return "A"
+	case "Ⓑ": return "B"
+	case "Ⓒ": return "C"
+	case "Ⓓ": return "D"
+	case "Ⓔ": return "E"
+	case "Ⓕ": return "F"
+	case "Ⓖ": return "G"
+	case "Ⓗ": return "H"
+	case "Ⓘ": return "I"
+	case "Ⓙ": return "J"
+	case "Ⓚ": return "K"
 	}
 
 	return s
