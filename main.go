@@ -2747,7 +2747,11 @@ func (m model) renderBoard() string {
 		if hState.Robber {
 			midStr = "▟██ ROB ▙"
 		} else if hState.Token > 0 {
-			midStr = fmt.Sprintf("▟█%02d█%s█▙", hState.Token, res.Icon)
+			if hState.Token < 10 {
+				midStr = fmt.Sprintf("▟█ %d █%s█▙", hState.Token, res.Icon)
+			} else {
+				midStr = fmt.Sprintf("▟█%d█%s█▙", hState.Token, res.Icon)
+			}
 		} else {
 			midStr = fmt.Sprintf("▟███%s██▙", res.Icon)
 		}
@@ -3188,8 +3192,13 @@ func (m model) renderBoardView() string {
 	sectionStyle := lipgloss.NewStyle().Width(dashboardWidth - 4)
 
 	// --- 1. Header Section ---
+	startTimeStr := "unknown"
+	if len(m.state.Log) > 0 {
+		startTime := time.Unix(m.state.Log[0].Timestamp, 0)
+		startTimeStr = startTime.Format("2006-01-02 15:04:05")
+	}
 	var headerSB strings.Builder
-	headerSB.WriteString(titleStyle.Render("GAME DASHBOARD") + "\n")
+	headerSB.WriteString(titleStyle.Render(fmt.Sprintf("Settlers of Catan - %s", startTimeStr)) + "\n")
 	headerView := sectionStyle.Copy().Height(2).Render(headerSB.String())
 
 	// --- 2. Selection Info Section (MOVED TO BOTTOM) ---
