@@ -3280,7 +3280,7 @@ func (m model) renderBoardView() string {
 	} else {
 		rollSB.WriteString("No roll yet.\n")
 	}
-	lastRollView := sectionStyle.Copy().Height(6).Render(rollSB.String())
+	lastRollView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Height(6).Render(rollSB.String())
 
 	// 2. Players Section (Integrated Special VP)
 	var playersSB strings.Builder
@@ -3310,7 +3310,10 @@ func (m model) renderBoardView() string {
 		
 		playersSB.WriteString(style.Render(line1) + "\n")
 	}
-	playersView := sectionStyle.Copy().Height(6).Render(playersSB.String())
+	playersView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Height(6).Render(playersSB.String())
+
+	// Combine Top Row
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, lastRollView, playersView)
 
 	// 3. Current Player Assets Section (TWO COLUMNS)
 	var curResView string
@@ -3385,9 +3388,12 @@ func (m model) renderBoardView() string {
 	bankView := bankSB.String()
 
 	// 5. Controls Section (BOTTOM - STATIC)
+	isInv := m.state.Meta.Status == "invitation"
+	isFin := m.state.Meta.Status == "finished"
+	isRoll := m.state.Meta.Phase == "roll" && !isInv && !isFin
+	isAct := m.state.Meta.Phase == "action" && !isInv && !isFin
+
 	var controlsSB strings.Builder
-	controlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("CONTROLS") + "\n")
-	
 	disabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	enabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	
@@ -3398,30 +3404,40 @@ func (m model) renderBoardView() string {
 		return disabledStyle.Render(label) + "\n"
 	}
 
-	isInv := m.state.Meta.Status == "invitation"
-	isFin := m.state.Meta.Status == "finished"
-	isRoll := m.state.Meta.Phase == "roll" && !isInv && !isFin
-	isAct := m.state.Meta.Phase == "action" && !isInv && !isFin
-
+	// GAME CONTROLS
+	controlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("GAME CONTROLS") + "\n")
 	controlsSB.WriteString(ctrl(" Arrows : Navigate", true))
 	controlsSB.WriteString(ctrl(" Enter  : Build/Upgrade", isAct || m.state.Meta.Phase == "setup_1" || m.state.Meta.Phase == "setup_2"))
 	controlsSB.WriteString(ctrl(" R      : Roll Dice", isRoll))
-	controlsSB.WriteString(ctrl(" 2      : Trading View", isAct))
 	controlsSB.WriteString(ctrl(" B      : Buy Dev Card", isAct))
 	controlsSB.WriteString(ctrl(" K      : Play Knight", isAct))
 	controlsSB.WriteString(ctrl(" E      : End Turn", isAct))
-	controlsSB.WriteString(ctrl(" G, B, U: Add Players", isInv))
-	controlsSB.WriteString(ctrl(" S      : Start Game", isInv))
-	controlsSB.WriteString(ctrl(" 1, v, I: Final Options", isFin))
 	controlsSB.WriteString(ctrl(" Q      : Quit", true))
 
-	controlsView := sectionStyle.Copy().Height(13).Render(controlsSB.String())
+	// SETUP CONTROLS
+	if isInv {
+		controlsSB.WriteString("\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("SETUP") + "\n")
+		controlsSB.WriteString(ctrl(" G : Add Guest Player", true))
+		controlsSB.WriteString(ctrl(" B : Add Bot Player", true))
+		controlsSB.WriteString(ctrl(" U : Add Git Player", true))
+		controlsSB.WriteString(ctrl(" X : Remove Last Player", len(m.state.Players) > 0))
+		controlsSB.WriteString(ctrl(" S : Start Game", len(m.state.Players) >= 2))
+	}
+
+	// FINAL OPTIONS
+	if isFin {
+		controlsSB.WriteString("\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("FINAL OPTIONS") + "\n")
+		controlsSB.WriteString(ctrl(" v : View Final Board", true))
+		controlsSB.WriteString(ctrl(" I : New Game (Reset)", true))
+		controlsSB.WriteString(ctrl(" P : Playback Log", true))
+	}
+
+	controlsView := sectionStyle.Copy().Height(16).Render(controlsSB.String())
 
 	// Combine Dashboard
 	dashboardContent := lipgloss.JoinVertical(lipgloss.Left,
 		headerView,
-		lastRollView,
-		playersView,
+		topRow,
 		curAssetsBox,
 		controlsView,
 	)
