@@ -3257,13 +3257,19 @@ func (m model) renderBoardView() string {
 		gains := m.state.GetRollResources(total)
 		if len(gains) > 0 {
 			playerGains := make(map[string][]string)
+			var pIDs []string
 			for res, players := range gains {
 				for pID, count := range players {
+					if _, ok := playerGains[pID]; !ok {
+						pIDs = append(pIDs, pID)
+					}
 					style := resourceStyles[res]
 					playerGains[pID] = append(playerGains[pID], fmt.Sprintf("%d%s", count, style.Icon))
 				}
 			}
-			for pID, resList := range playerGains {
+			sort.Strings(pIDs)
+			for _, pID := range pIDs {
+				resList := playerGains[pID]
 				rollSB.WriteString(fmt.Sprintf("%s: %s\n", pID, strings.Join(resList, ", ")))
 			}
 		} else if total != 7 {
