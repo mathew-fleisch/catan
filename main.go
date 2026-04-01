@@ -2105,6 +2105,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewMode = 0
 		case "2":
 			m.viewMode = 1
+		case "3":
+			m.viewMode = 2
 		case "r":
 			m.runDM("roll")
 		case "e":
@@ -2173,7 +2175,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "c":
 			// Cheat resources for testing
 			m.runDM("move", m.state.Meta.CurrentPlayerID, "cheat_resources")
-		case "3", "4", "5":
+		case "4", "5":
 			// No-op or future pages
 		case "B", "P", "S", "A", "R": // Trading actions
 			if m.viewMode == 1 {
@@ -3083,15 +3085,93 @@ func (m model) renderGameOver() string {
 		Render(sb.String())
 }
 
+func (m model) renderChatView() string {
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render("PR CHAT ROOM"))
+	sb.WriteString("\n\n")
+
+	token := os.Getenv("GIT_TOKEN")
+	repo := os.Getenv("GITHUB_REPOSITORY")
+	pr := os.Getenv("GITHUB_PR_NUMBER")
+
+	if token == "" || repo == "" || pr == "" {
+		sb.WriteString(lipgloss.NewStyle().
+			Foreground(lipgloss.Color("9")).
+			Bold(true).
+			Render("CONFIGURATION ERROR: GIT_TOKEN, GITHUB_REPOSITORY, or GITHUB_PR_NUMBER not set.") + "\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Chat will only be stored locally.") + "\n\n")
+	}
+
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("CHAT HISTORY") + "\n")
+	if len(m.chatHistory) == 0 {
+		sb.WriteString(" No messages yet.\n")
+	} else {
+		displayCount := 20
+		start := len(m.chatHistory) - displayCount - m.chatScroll
+		if start < 0 { start = 0 }
+		end := len(m.chatHistory) - m.chatScroll
+		if end > len(m.chatHistory) { end = len(m.chatHistory) }
+		
+		for i := start; i < end; i++ {
+			sb.WriteString(" " + m.chatHistory[i] + "\n")
+		}
+	}
+
+	sb.WriteString("\n")
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("SEND MESSAGE") + "\n")
+	prompt := " > "
+	if m.isChatting {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("8")).Render(prompt + m.inputText + "_") + "\n")
+		sb.WriteString("\n " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("(Enter to Send, Esc to Cancel)"))
+	} else {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(" Press [/] to start typing...") + "\n")
+	}
+
+	sb.WriteString("\n\n " + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Press '1' for Board, '2' for Trading."))
+
+	return borderStyle.Width(m.width - 4).Height(m.height - 4).Render(sb.String())
+}
+
 func (m model) View() string {
 	if m.state.Meta.Status == "finished" && m.viewMode == 0 {
 		return m.renderGameOver()
 	}
 
-	if m.viewMode == 1 && m.state.Meta.Status != "finished" {
-		return m.renderTradeView()
+	// Tab Header
+	var tabs []string
+	tabNames := []string{"1: BOARD", "2: TRADE", "3: CHAT"}
+	activeTabStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("15")).
+		Background(lipgloss.Color("62")).
+		Padding(0, 2)
+	inactiveTabStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8")).
+		Padding(0, 2)
+
+	for i, name := range tabNames {
+		if i == m.viewMode {
+			tabs = append(tabs, activeTabStyle.Render(name))
+		} else {
+			tabs = append(tabs, inactiveTabStyle.Render(name))
+		}
+	}
+	header := lipgloss.JoinHorizontal(lipgloss.Top, tabs...) + "\n\n"
+
+	var pageContent string
+	switch m.viewMode {
+	case 1:
+		pageContent = m.renderTradeView()
+	case 2:
+		pageContent = m.renderChatView()
+	default:
+		pageContent = m.renderBoardView()
 	}
 
+	return header + pageContent
+}
+
+func (m model) renderBoardView() string {
 	// Board box
 	boardView := borderStyle.Copy().
 		Render(m.renderBoard())
@@ -3371,31 +3451,6 @@ func (m model) View() string {
 
 	// Combined footer box
 	var footerLines []string
-	
-	if len(m.chatHistory) > 0 || m.isChatting {
-		var chatSB strings.Builder
-		header := "CHAT:"
-		if m.chatScroll > 0 {
-			header = fmt.Sprintf("CHAT (scrolled %d):", m.chatScroll)
-		}
-		chatSB.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13")).Render(header) + "\n")
-		
-		displayCount := 5
-		start := len(m.chatHistory) - displayCount - m.chatScroll
-		if start < 0 { start = 0 }
-		end := len(m.chatHistory) - m.chatScroll
-		if end > len(m.chatHistory) { end = len(m.chatHistory) }
-		if end < 0 { end = 0 }
-
-		for i := start; i < end; i++ {
-			chatSB.WriteString(" " + m.chatHistory[i] + "\n")
-		}
-		if m.isChatting {
-			chatSB.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("8")).Render(" > " + m.inputText + "_") + "\n")
-		}
-		footerLines = append(footerLines, chatSB.String())
-	}
-
 	footerLines = append(footerLines, bankView)
 	
 	metaLine := selectionSB.String()
@@ -3411,30 +3466,7 @@ func (m model) View() string {
 		Width(lipgloss.Width(mainView) - 2).
 		Render(strings.Join(footerLines, "\n"))
 
-	view := lipgloss.JoinVertical(lipgloss.Left, mainView, footerView)
-
-	if m.isPrompting {
-		promptStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("13")).
-			Padding(1, 2).
-			Background(lipgloss.Color("0"))
-
-		promptBox := promptStyle.Render(
-			lipgloss.JoinVertical(lipgloss.Center,
-				lipgloss.NewStyle().Bold(true).Render("ENTER GIT USERNAME:"),
-				"",
-				lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("8")).Padding(0, 1).Render(m.inputText+"_"),
-				"",
-				lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("(Enter to Confirm, Esc to Cancel)"),
-			),
-		)
-
-		// Center the prompt over the view
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, promptBox)
-	}
-
-	return view
+	return lipgloss.JoinVertical(lipgloss.Left, mainView, footerView)
 }
 
 func main() {
