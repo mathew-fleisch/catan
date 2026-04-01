@@ -3390,6 +3390,7 @@ func (m model) renderBoardView() string {
 	// 5. Controls Section (BOTTOM - STATIC)
 	isInv := m.state.Meta.Status == "invitation"
 	isFin := m.state.Meta.Status == "finished"
+	isSetup := m.state.Meta.Phase == "setup_1" || m.state.Meta.Phase == "setup_2"
 	isRoll := m.state.Meta.Phase == "roll" && !isInv && !isFin
 	isAct := m.state.Meta.Phase == "action" && !isInv && !isFin
 
@@ -3407,32 +3408,28 @@ func (m model) renderBoardView() string {
 	// GAME CONTROLS
 	controlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("GAME CONTROLS") + "\n")
 	controlsSB.WriteString(ctrl(" Arrows : Navigate", true))
-	controlsSB.WriteString(ctrl(" Enter  : Build/Upgrade", isAct || m.state.Meta.Phase == "setup_1" || m.state.Meta.Phase == "setup_2"))
+	controlsSB.WriteString(ctrl(" Enter  : Build/Upgrade", isAct || isSetup))
 	controlsSB.WriteString(ctrl(" R      : Roll Dice", isRoll))
 	controlsSB.WriteString(ctrl(" B      : Buy Dev Card", isAct))
 	controlsSB.WriteString(ctrl(" K      : Play Knight", isAct))
-	controlsSB.WriteString(ctrl(" E      : End Turn", isAct))
+	controlsSB.WriteString(ctrl(" E      : End Turn", isAct || isSetup))
 	controlsSB.WriteString(ctrl(" Q      : Quit", true))
 
 	// SETUP CONTROLS
-	if isInv {
-		controlsSB.WriteString("\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("SETUP") + "\n")
-		controlsSB.WriteString(ctrl(" G : Add Guest Player", true))
-		controlsSB.WriteString(ctrl(" B : Add Bot Player", true))
-		controlsSB.WriteString(ctrl(" U : Add Git Player", true))
-		controlsSB.WriteString(ctrl(" X : Remove Last Player", len(m.state.Players) > 0))
-		controlsSB.WriteString(ctrl(" S : Start Game", len(m.state.Players) >= 2))
-	}
+	controlsSB.WriteString("\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("SETUP") + "\n")
+	controlsSB.WriteString(ctrl(" G : Add Guest Player", isInv))
+	controlsSB.WriteString(ctrl(" B : Add Bot Player", isInv))
+	controlsSB.WriteString(ctrl(" U : Add Git Player", isInv))
+	controlsSB.WriteString(ctrl(" X : Remove Last Player", isInv && len(m.state.Players) > 0))
+	controlsSB.WriteString(ctrl(" S : Start Game", isInv && len(m.state.Players) >= 2))
 
 	// FINAL OPTIONS
-	if isFin {
-		controlsSB.WriteString("\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("FINAL OPTIONS") + "\n")
-		controlsSB.WriteString(ctrl(" v : View Final Board", true))
-		controlsSB.WriteString(ctrl(" I : New Game (Reset)", true))
-		controlsSB.WriteString(ctrl(" P : Playback Log", true))
-	}
+	controlsSB.WriteString("\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("FINAL OPTIONS") + "\n")
+	controlsSB.WriteString(ctrl(" v : View Final Board", isFin))
+	controlsSB.WriteString(ctrl(" I : New Game (Reset)", isFin))
+	controlsSB.WriteString(ctrl(" P : Playback Log", isFin))
 
-	controlsView := sectionStyle.Copy().Height(16).Render(controlsSB.String())
+	controlsView := sectionStyle.Copy().Height(18).Render(controlsSB.String())
 
 	// Combine Dashboard
 	dashboardContent := lipgloss.JoinVertical(lipgloss.Left,
