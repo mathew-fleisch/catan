@@ -792,7 +792,65 @@ vertices:
     - EK07
     x: 14
     y: 20
-ports:
+hexes:
+  TB06:
+    adjacent_hexes: [TC04, TC08, TD06]
+    vertices: [VA06, VA07, VB05, VB08, VC06, VC07]
+  TC04:
+    adjacent_hexes: [TB06, TD02, TD06, TE04]
+    vertices: [VB04, VB05, VC03, VC06, VD04, VD05]
+  TC08:
+    adjacent_hexes: [TB06, TD06, TD10, TE08]
+    vertices: [VB08, VB09, VC07, VC10, VD08, VD09]
+  TD02:
+    adjacent_hexes: [TC04, TE04, TF02]
+    vertices: [VC02, VC03, VD01, VD04, VE02, VE03]
+  TD06:
+    adjacent_hexes: [TB06, TC04, TC08, TE04, TE08, TF06]
+    vertices: [VC06, VC07, VD05, VD08, VE06, VE07]
+  TD10:
+    adjacent_hexes: [TC08, TE08, TF10]
+    vertices: [VC10, VC11, VD09, VD12, VE10, VE11]
+  TE04:
+    adjacent_hexes: [TC04, TD02, TD06, TF02, TF06, TG04]
+    vertices: [VD04, VD05, VE03, VE06, VF04, VF05]
+  TE08:
+    adjacent_hexes: [TC08, TD06, TD10, TF06, TF10, TG08]
+    vertices: [VD08, VD09, VE07, VE10, VF08, VF09]
+  TF02:
+    adjacent_hexes: [TD02, TE04, TG04, TH02]
+    vertices: [VE02, VE03, VF01, VF04, VG02, VG03]
+  TF06:
+    adjacent_hexes: [TD06, TE04, TE08, TG04, TG08, TH06]
+    vertices: [VE06, VE07, VF05, VF08, VG06, VG07]
+  TF10:
+    adjacent_hexes: [TD10, TE08, TG08, TH10]
+    vertices: [VE10, VE11, VF09, VF12, VG10, VG11]
+  TG04:
+    adjacent_hexes: [TE04, TF02, TF06, TH02, TH06, TI04]
+    vertices: [VF04, VF05, VG03, VG06, VH04, VH05]
+  TG08:
+    adjacent_hexes: [TE08, TF06, TF10, TH06, TH10, TI08]
+    vertices: [VF08, VF09, VG07, VG10, VH08, VH09]
+  TH02:
+    adjacent_hexes: [TF02, TG04, TI04, TH01]
+    vertices: [VG02, VG03, VH01, VH04, VI02, VI03]
+  TH06:
+    adjacent_hexes: [TF06, TG04, TG08, TI04, TI08, TJ06]
+    vertices: [VG06, VG07, VH05, VH08, VI06, VI07]
+  TH10:
+    adjacent_hexes: [TF10, TG08, TI08]
+    vertices: [VG10, VG11, VH09, VH12, VI10, VI11]
+  TI04:
+    adjacent_hexes: [TG04, TH02, TH06, TJ06]
+    vertices: [VH04, VH05, VI03, VI06, VJ04, VJ05]
+  TI08:
+    adjacent_hexes: [TG08, TH06, TH10, TJ06]
+    vertices: [VH08, VH09, VI07, VI10, VJ08, VJ09]
+  TJ06:
+    adjacent_hexes: [TH06, TI04, TI08]
+    vertices: [VI06, VI07, VJ05, VJ08, VK06, VK07]
+
   P1:
     type: "3:1"
     vertices: [VA06, VA07]

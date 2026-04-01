@@ -283,10 +283,9 @@ func (s *GameState) Init(topo *Topology) {
 	r.Shuffle(len(deck), func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
 	s.Meta.DevCardDeck = deck
 
-	// Hex randomization
+	// Hex randomization with clumping avoidance
 	resPool := []string{"wood", "wood", "wood", "wood", "brick", "brick", "brick", "sheep", "sheep", "sheep", "sheep", "wheat", "wheat", "wheat", "wheat", "ore", "ore", "ore", "desert"}
 	tokenPool := []int{2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12}
-	r.Shuffle(len(resPool), func(i, j int) { resPool[i], resPool[j] = resPool[j], resPool[i] })
 	r.Shuffle(len(tokenPool), func(i, j int) { tokenPool[i], tokenPool[j] = tokenPool[j], tokenPool[i] })
 
 	hexIDs := []string{"TB06", "TC04", "TC08", "TD02", "TD06", "TD10", "TE04", "TE08", "TF02", "TF06", "TF10", "TG04", "TG08", "TH02", "TH06", "TH10", "TI04", "TI08", "TJ06"}
@@ -312,22 +311,49 @@ func (s *GameState) Init(topo *Topology) {
 		"TJ06": "VI06,VI07,VJ05,VJ08,VK06,VK07",
 	}
 
-	tIdx := 0
-	for i, hID := range hexIDs {
-		res := resPool[i]
-		token := 0
-		robber := false
-		if res == "desert" {
-			robber = true
-		} else {
-			token = tokenPool[tIdx]
-			tIdx++
+	// Simple placement with clumping avoidance
+	// Try up to 100 times to get a balanced board
+	for attempt := 0; attempt < 100; attempt++ {
+		r.Shuffle(len(resPool), func(i, j int) { resPool[i], resPool[j] = resPool[j], resPool[i] })
+		clumps := 0
+		tempHexes := make(map[string]string) // hID -> resource
+		
+		for i, hID := range hexIDs {
+			res := resPool[i]
+			tempHexes[hID] = res
+			
+			// Check neighbors in topo
+			if topo != nil {
+				if hTopo, ok := topo.Hexes[hID]; ok {
+					for _, adjID := range hTopo.AdjacentHexes {
+						if adjRes, ok := tempHexes[adjID]; ok && adjRes == res && res != "desert" {
+							clumps++
+						}
+					}
+				}
+			}
 		}
-		s.Board.Hexes[hID] = HexState{
-			Resource: res,
-			Token:    token,
-			Robber:   robber,
-			Vertices: hexToVerts[hID],
+		
+		if clumps == 0 || attempt == 99 {
+			tIdx := 0
+			for i, hID := range hexIDs {
+				res := resPool[i]
+				token := 0
+				robber := false
+				if res == "desert" {
+					robber = true
+				} else {
+					token = tokenPool[tIdx]
+					tIdx++
+				}
+				s.Board.Hexes[hID] = HexState{
+					Resource: res,
+					Token:    token,
+					Robber:   robber,
+					Vertices: hexToVerts[hID],
+				}
+			}
+			break
 		}
 	}
 
@@ -512,6 +538,9 @@ func (s *GameState) dfsRoad(eID, playerID string, visited map[string]bool, playe
 func (s *GameState) EndTurn() {
 	cur := s.Meta.CurrentPlayerID
 	order := s.Meta.TurnOrder
+	if len(order) == 0 {
+		return
+	}
 	idx := -1
 	for i, id := range order {
 		if id == cur {
@@ -1658,6 +1687,12 @@ type Topology struct {
 	Edges    map[string]EdgeTopology   `yaml:"edges"`
 	Vertices map[string]VertexTopology `yaml:"vertices"`
 	Ports    map[string]PortTopology   `yaml:"ports"`
+	Hexes    map[string]HexTopology    `yaml:"hexes"`
+}
+
+type HexTopology struct {
+	AdjacentHexes []string `yaml:"adjacent_hexes"`
+	Vertices      []string `yaml:"vertices"`
 }
 
 type EdgeTopology struct {
@@ -1749,7 +1784,7 @@ func initialModel() model {
 		board:    string(boardData),
 		state:    state,
 		topology: topology,
-		width:    120,
+		width:    140,
 		height:   60,
 	}
 	m.relinkPorts()
@@ -2344,7 +2379,8 @@ var xterm256 = []color.RGBA{
 func (m model) renderToBuffer() *GridBuffer {
 	v := m.View()
 	lines := strings.Split(v, "\n")
-	buf := NewGridBuffer(m.width, len(lines))
+	// Use m.height as the fixed height
+	buf := NewGridBuffer(m.width, m.height)
 
 	for y, line := range lines {
 		if y >= buf.Height {
@@ -2694,25 +2730,20 @@ func (m model) renderBoard() string {
 	// Reconstruct the board
 	var sb strings.Builder
 	for i, row := range grid {
-		lineStr := ""
-		visualWidth := 0
+		rowStr := ""
 		for _, cell := range row {
 			if cell == "" {
 				continue
 			}
-			lineStr += cell
-			visualWidth += stringVisualWidth(cell)
+			rowStr += cell
 		}
+		lineStr := strings.TrimRight(rowStr, " ")
 		sb.WriteString(lineStr)
-		// Pad every line to exactly 60 visual cells
-		if visualWidth < 60 {
-			sb.WriteString(strings.Repeat(" ", 60-visualWidth))
-		}
 		if i < len(grid)-1 {
 			sb.WriteString("\n")
 		}
 	}
-	return sb.String()
+	return sb.String() + "\x1b[0m"
 }
 
 func (m model) renderTradeView() string {
@@ -2873,60 +2904,26 @@ func (m model) View() string {
 	}
 
 	// Board box
-	boardView := lipgloss.NewStyle().
-		Render(m.renderBoard()) // Removed MarginTop(1)
+	boardView := borderStyle.Copy().
+		Render(m.renderBoard())
 
-	// Dashboard box
-	dashboardWidth := m.width - 74 - 2
-	if dashboardWidth < 20 {
-		dashboardWidth = 20
+	// Dashboard box - Increased width
+	dashboardWidth := 50
+	if m.width-lipgloss.Width(boardView)-4 < dashboardWidth {
+		dashboardWidth = m.width - lipgloss.Width(boardView) - 4
+	}
+	if dashboardWidth < 30 {
+		dashboardWidth = 30
 	}
 
-	sectionStyle := lipgloss.NewStyle().Width(dashboardWidth)
+	sectionStyle := lipgloss.NewStyle().Width(dashboardWidth - 4)
 
-	// --- All section definitions remain the same, only their join order changes ---
-
-	// 1. Header Section
+	// --- 1. Header Section ---
 	var headerSB strings.Builder
-	headerSB.WriteString(titleStyle.Render("GAME DASHBOARD") + "\n\n")
-	phaseStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
-	if len(m.history) > 0 {
-		status := "PAUSED"
-		if m.isPlaying {
-			status = "PLAYING"
-		}
-		headerSB.WriteString(phaseStyle.Copy().Foreground(lipgloss.Color("10")).Render("PLAYBACK ("+status+"):") + fmt.Sprintf(" Step %d/%d\n", m.historyIdx+1, len(m.history)))
-	} else {
-		headerSB.WriteString(phaseStyle.Render("PHASE:") + " " + strings.ToUpper(m.state.Meta.Phase) + "\n")
-		headerSB.WriteString(phaseStyle.Render("STATE:") + " " + strings.ToUpper(m.state.Meta.Status) + "\n")
-	}
-	headerView := sectionStyle.Copy().Height(5).Render(headerSB.String())
+	headerSB.WriteString(titleStyle.Render("GAME DASHBOARD") + "\n")
+	headerView := sectionStyle.Copy().Height(2).Render(headerSB.String())
 
-	// 2. Controls Section
-	var controlsSB strings.Builder
-	controlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("CONTROLS") + "\n")
-	controlsSB.WriteString(" Arrows : Navigate\n")
-	controlsSB.WriteString(" Enter  : Build/Upgrade\n")
-	if m.state.Meta.Status == "invitation" {
-		controlsSB.WriteString(" G, B, U: Add Players\n")
-		controlsSB.WriteString(" S      : Start Game\n")
-		controlsSB.WriteString(" P      : Simulation\n")
-	} else if m.state.Meta.Status == "finished" {
-		controlsSB.WriteString(" 1      : Show Standings\n")
-		controlsSB.WriteString(" v      : Show Board\n")
-		controlsSB.WriteString(" I      : New Game\n")
-	} else if m.state.Meta.Phase == "roll" {
-		controlsSB.WriteString(" R      : Roll Dice\n")
-	} else {
-		controlsSB.WriteString(" 2      : Trading View\n")
-		controlsSB.WriteString(" B      : Buy Dev Card\n")
-		controlsSB.WriteString(" K      : Play Knight\n")
-		controlsSB.WriteString(" E      : End Turn\n")
-	}
-	controlsSB.WriteString(" Q      : Quit\n")
-	controlsView := sectionStyle.Copy().Height(10).Render(controlsSB.String())
-
-	// 3. Selection Info Section (defined here, joined at bottom)
+	// --- 2. Selection Info Section (MOVED TO BOTTOM) ---
 	var selectionSB strings.Builder
 	selectionSB.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")).Render("SELECTED:") + " ")
 	var coords string
@@ -2942,73 +2939,46 @@ func (m model) View() string {
 			coords += fmt.Sprintf(" (Port: %s)", v.Port)
 		}
 	} else {
-		topo := m.topology.Edges[m.selectedID]
-		var parts []string
-		for _, vID := range topo.AdjacentVertices {
-			if len(vID) >= 4 {
-				row := vID[1]
-				colStr := strings.TrimLeft(vID[2:], "0")
-				parts = append(parts, fmt.Sprintf("%c%s", row, colStr))
+		topo, ok := m.topology.Edges[m.selectedID]
+		if ok {
+			var parts []string
+			for _, vID := range topo.AdjacentVertices {
+				if len(vID) >= 4 {
+					row := vID[1]
+					colStr := strings.TrimLeft(vID[2:], "0")
+					parts = append(parts, fmt.Sprintf("%c%s", row, colStr))
+				}
 			}
+			coords = strings.Join(parts, "-")
 		}
-		coords = strings.Join(parts, "-")
 	}
-	selectionSB.WriteString(fmt.Sprintf("%s [%s]\n", m.selectedID, coords))
-	selectionView := sectionStyle.Copy().Height(3).Render(selectionSB.String())
+	selectionSB.WriteString(fmt.Sprintf("%s [%s]", m.selectedID, coords))
 
-	// 4. Resource Legend Section (VERTICAL)
-	var resourceSB strings.Builder
-	resourceSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("RESOURCES & BANK") + "\n")
-	resOrder := []string{"wood", "brick", "sheep", "wheat", "ore"}
-	for _, resName := range resOrder {
-		res := resourceStyles[resName]
-		style := lipgloss.NewStyle().Foreground(res.Color)
-		bank := MaxBank - m.state.GetTotalResources(resName)
-		name := strings.Title(resName)
-		if resName == "ore" {
-			name = " " + name + " "
-		}
-		resourceSB.WriteString(style.Render(fmt.Sprintf("%s %-7s (%d)", res.Icon, name, bank)) + "\n")
-	}
-	resourceView := sectionStyle.Copy().Height(7).Render(resourceSB.String())
+	// Game Info (Phase/State) for footer
+	var phaseInfo string
+	phaseStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
+	phaseInfo = fmt.Sprintf("%s %s | %s %s", 
+		phaseStyle.Render("PHASE:"), strings.ToUpper(m.state.Meta.Phase),
+		phaseStyle.Render("STATE:"), strings.ToUpper(m.state.Meta.Status))
 
-	// 5. Special VP Section
-	var specialVPSB strings.Builder
-	specialVPSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("SPECIAL VP") + "\n")
-	armyStr := "Largest Army: "
-	if m.state.Meta.LargestArmyPlayer != "" {
-		armyStr += fmt.Sprintf("%s (%d)", m.state.Meta.LargestArmyPlayer, m.state.Meta.LargestArmyCount)
-	} else {
-		armyStr += "None"
-	}
-	specialVPSB.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Render(armyStr) + "\n")
-	roadStr := "Longest Road: "
-	if m.state.Meta.LongestRoadPlayer != "" {
-		roadStr += fmt.Sprintf("%s (%d)", m.state.Meta.LongestRoadPlayer, m.state.Meta.LongestRoadCount)
-	} else {
-		roadStr += "None"
-	}
-	specialVPSB.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render(roadStr) + "\n")
-	specialVPView := sectionStyle.Copy().Height(4).Render(specialVPSB.String())
-
-	// Roll Section
+	// 1. Roll Section (TOP)
 	var rollSB strings.Builder
 	rollSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("CURRENT ROLL") + "\n")
 	if m.state.Meta.LastRoll1 > 0 {
 		d1 := m.state.Meta.LastRoll1
 		d2 := m.state.Meta.LastRoll2
 		total := d1 + d2
-		
+
 		dice1 := toDice(d1)
 		dice2 := toDice(d2)
-		
+
 		rollView := lipgloss.JoinHorizontal(lipgloss.Center,
 			lipgloss.NewStyle().Padding(0, 1).Render(dice1),
 			lipgloss.NewStyle().Bold(true).Render(" + "),
 			lipgloss.NewStyle().Padding(0, 1).Render(dice2),
 			lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf(" = %d", total)),
 		)
-		
+
 		if total == 7 {
 			rollView = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(rollView)
 		}
@@ -3037,88 +3007,159 @@ func (m model) View() string {
 	}
 	lastRollView := sectionStyle.Copy().Height(6).Render(rollSB.String())
 
-	// 6. Players Section
+	// 2. Players Section (Integrated Special VP)
 	var playersSB strings.Builder
 	playersSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("PLAYERS") + "\n")
+	var currentPlayer Player
 	for i, p := range m.state.Players {
 		prefix := "  "
 		isCurrent := p.ID == m.state.Meta.CurrentPlayerID
 		style := playerColorStyles[i%len(playerColorStyles)]
 		if isCurrent {
+			currentPlayer = p
 			prefix = activeTheme.UI["player_cursor"]
 			style = style.Copy().Bold(true).Underline(true)
 		}
 		line1 := fmt.Sprintf("%s [%s] VP:%d", prefix, p.ID, p.VP)
+		
+		var specialTexts []string
 		if m.state.Meta.LargestArmyPlayer == p.ID {
-			line1 += " " + activeTheme.UI["largest_army"]
+			specialTexts = append(specialTexts, "+army(" + fmt.Sprintf("%d", m.state.Meta.LargestArmyCount) + ")")
 		}
 		if m.state.Meta.LongestRoadPlayer == p.ID {
-			line1 += " " + activeTheme.UI["longest_road"]
+			specialTexts = append(specialTexts, "+road(" + fmt.Sprintf("%d", m.state.Meta.LongestRoadCount) + ")")
 		}
+		if len(specialTexts) > 0 {
+			line1 += " [" + strings.Join(specialTexts, ", ") + "]"
+		}
+		
 		playersSB.WriteString(style.Render(line1) + "\n")
-		if isCurrent {
-			if p.Type == "git" {
-				total := 0
-				for _, count := range p.Resources {
-					total += count
-				}
-				playersSB.WriteString(fmt.Sprintf("   Resources: %d cards (Private)\n", total))
-			} else {
-				resLine := fmt.Sprintf("   %s:%d %s:%d %s:%d %s:%d %s:%d",
-					activeTheme.Resources["wood"], p.Resources["wood"],
-					activeTheme.Resources["brick"], p.Resources["brick"],
-					activeTheme.Resources["sheep"], p.Resources["sheep"],
-					activeTheme.Resources["wheat"], p.Resources["wheat"],
-					activeTheme.Resources["ore"], p.Resources["ore"])
-				playersSB.WriteString(resLine + "\n")
-			}
+	}
+	playersView := sectionStyle.Copy().Height(6).Render(playersSB.String())
 
-			// Add Dev Cards (Hidden for git users)
-			var cardList []string
-			totalCards := 0
-			for card, count := range p.DevCards {
-				if count > 0 {
-					name := strings.Title(strings.ReplaceAll(card, "_", " "))
-					cardList = append(cardList, fmt.Sprintf("%s:%d", name, count))
-					totalCards += count
-				}
-			}
-			for card, count := range p.NewDevCards {
-				if count > 0 {
-					name := strings.Title(strings.ReplaceAll(card, "_", " "))
-					cardList = append(cardList, fmt.Sprintf("%s:%d(new)", name, count))
-					totalCards += count
-				}
-			}
-			if totalCards > 0 {
-				if p.Type == "git" {
-					playersSB.WriteString(fmt.Sprintf("   Cards: %d (Private)\n", totalCards))
-				} else {
-					playersSB.WriteString("   Cards: " + strings.Join(cardList, ", ") + "\n")
-				}
+	// 3. Current Player Assets Section (TWO COLUMNS)
+	var curResView string
+	if currentPlayer.ID != "" {
+		// --- Resources Column ---
+		var resSB strings.Builder
+		resSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("RESOURCES") + "\n")
+		resOrder := []string{"wood", "brick", "sheep", "wheat", "ore"}
+		
+		for _, resName := range resOrder {
+			res := resourceStyles[resName]
+			count := currentPlayer.Resources[resName]
+			name := strings.Title(resName)
+			if currentPlayer.Type == "git" {
+				resSB.WriteString(lipgloss.NewStyle().Foreground(res.Color).Render(fmt.Sprintf(" %s %-7s: ?", res.Icon, name)) + "\n")
+			} else {
+				resSB.WriteString(lipgloss.NewStyle().Foreground(res.Color).Render(fmt.Sprintf(" %s %-7s: %d", res.Icon, name, count)) + "\n")
 			}
 		}
+		if currentPlayer.Type == "git" {
+			total := 0
+			for _, c := range currentPlayer.Resources { total += c }
+			resSB.WriteString(fmt.Sprintf("\n Total: %d (Private)", total))
+		}
+		resCol := lipgloss.NewStyle().Width((dashboardWidth - 4) / 2).Render(resSB.String())
+
+		// --- Dev Cards Column ---
+		var cardsSB strings.Builder
+		cardsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("CARDS") + "\n")
+		allCards := []string{"knight", "vp", "road_building", "year_of_plenty", "monopoly"}
+		disabledCardStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		enabledCardStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true)
+
+		for _, cardType := range allCards {
+			count := currentPlayer.DevCards[cardType] + currentPlayer.NewDevCards[cardType]
+			name := strings.Title(strings.ReplaceAll(cardType, "_", " "))
+			if cardType == "vp" { name = "Victory Point" }
+			
+			label := name
+			if count > 1 {
+				label = fmt.Sprintf("%s(x%d)", name, count)
+			}
+			
+			if count > 0 {
+				cardsSB.WriteString(enabledCardStyle.Render(" "+label) + "\n")
+			} else {
+				cardsSB.WriteString(disabledCardStyle.Render(" "+label) + "\n")
+			}
+		}
+		cardsCol := lipgloss.NewStyle().Width((dashboardWidth - 4) / 2).Render(cardsSB.String())
+
+		// Join columns
+		curResView = lipgloss.JoinHorizontal(lipgloss.Top, resCol, cardsCol)
+	} else {
+		curResView = sectionStyle.Copy().Render(" No player active.")
 	}
-	playersView := sectionStyle.Copy().Height(10).Render(playersSB.String())
+	curAssetsBox := sectionStyle.Copy().Height(9).Render(curResView)
+
+	// 4. Resource Legend Section (BANK - Horizontal for Footer)
+	var bankSB strings.Builder
+	bankSB.WriteString(lipgloss.NewStyle().Bold(true).Render("BANK:") + " ")
+	resOrder := []string{"wood", "brick", "sheep", "wheat", "ore"}
+	var bankItems []string
+	for _, resName := range resOrder {
+		res := resourceStyles[resName]
+		style := lipgloss.NewStyle().Foreground(res.Color)
+		bank := MaxBank - m.state.GetTotalResources(resName)
+		name := strings.Title(resName)
+		bankItems = append(bankItems, style.Render(fmt.Sprintf("%s %s(%d)", res.Icon, name, bank)))
+	}
+	bankSB.WriteString(strings.Join(bankItems, "  "))
+	bankView := bankSB.String()
+
+	// 5. Controls Section (BOTTOM - STATIC)
+	var controlsSB strings.Builder
+	controlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("CONTROLS") + "\n")
+	
+	disabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	enabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	
+	ctrl := func(label string, enabled bool) string {
+		if enabled {
+			return enabledStyle.Render(label) + "\n"
+		}
+		return disabledStyle.Render(label) + "\n"
+	}
+
+	isInv := m.state.Meta.Status == "invitation"
+	isFin := m.state.Meta.Status == "finished"
+	isRoll := m.state.Meta.Phase == "roll" && !isInv && !isFin
+	isAct := m.state.Meta.Phase == "action" && !isInv && !isFin
+
+	controlsSB.WriteString(ctrl(" Arrows : Navigate", true))
+	controlsSB.WriteString(ctrl(" Enter  : Build/Upgrade", isAct || m.state.Meta.Phase == "setup_1" || m.state.Meta.Phase == "setup_2"))
+	controlsSB.WriteString(ctrl(" R      : Roll Dice", isRoll))
+	controlsSB.WriteString(ctrl(" 2      : Trading View", isAct))
+	controlsSB.WriteString(ctrl(" B      : Buy Dev Card", isAct))
+	controlsSB.WriteString(ctrl(" K      : Play Knight", isAct))
+	controlsSB.WriteString(ctrl(" E      : End Turn", isAct))
+	controlsSB.WriteString(ctrl(" G, B, U: Add Players", isInv))
+	controlsSB.WriteString(ctrl(" S      : Start Game", isInv))
+	controlsSB.WriteString(ctrl(" 1, v, I: Final Options", isFin))
+	controlsSB.WriteString(ctrl(" Q      : Quit", true))
+
+	controlsView := sectionStyle.Copy().Height(13).Render(controlsSB.String())
 
 	// Combine Dashboard
 	dashboardContent := lipgloss.JoinVertical(lipgloss.Left,
 		headerView,
-		controlsView,
-		resourceView,
-		specialVPView,
 		lastRollView,
 		playersView,
-		selectionView, // MOVED TO BOTTOM
+		curAssetsBox,
+		controlsView,
 	)
 
-	dashboardView := dashboardStyle.Copy().
+	boardHeight := lipgloss.Height(boardView)
+	dashboardView := borderStyle.Copy().
 		Width(dashboardWidth).
+		Height(boardHeight - 2). // -2 for the border of dashboardView itself
 		Render(dashboardContent)
 
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, boardView, dashboardView)
 
-	// 7. Status Section (FOOTER)
+	// 7. Status & Selection Section (FOOTER)
 	var statusSB strings.Builder
 	if len(m.history) > 0 {
 		status := activeTheme.UI["paused"] + " PAUSED"
@@ -3138,9 +3179,22 @@ func (m model) View() string {
 		statusStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 		statusSB.WriteString(statusStyle.Render("STATUS: ") + m.message)
 	}
+
+	// Combined footer box
+	footerLines := []string{bankView}
+	
+	metaLine := selectionSB.String()
+	if phaseInfo != "" {
+		metaLine += "  |  " + phaseInfo
+	}
+	if statusSB.Len() > 0 {
+		metaLine += "  |  " + statusSB.String()
+	}
+	footerLines = append(footerLines, metaLine)
+
 	footerView := borderStyle.Copy().
-		Width(m.width - 2).
-		Render(statusSB.String())
+		Width(lipgloss.Width(mainView) - 2).
+		Render(strings.Join(footerLines, "\n"))
 
 	view := lipgloss.JoinVertical(lipgloss.Left, mainView, footerView)
 
@@ -3320,7 +3374,7 @@ func handlePlayback(state GameState, topo Topology) {
 	m := model{
 		board:    string(boardData),
 		topology: topo,
-		width:    120,
+		width:    140,
 		height:   60,
 		history:  history,
 	}

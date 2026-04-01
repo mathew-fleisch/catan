@@ -1,15 +1,15 @@
 meta:
     status: setup
-    last_action_timestamp: 1774985364
+    last_action_timestamp: 1774998151
     timeout_seconds: 86400
     max_skips: 3
     turn_order:
-        - bot-3
+        - bot-1
         - bot-4
         - bot-2
-        - bot-1
-    current_player_id: bot-3
-    phase: setup_1
+        - bot-3
+    current_player_id: bot-1
+    phase: action
     dev_card_deck:
         - knight
         - knight
@@ -43,7 +43,7 @@ meta:
     longest_road_player: bot2
     longest_road_count: 15
     last_roll_1: 1
-    last_roll_2: 4
+    last_roll_2: 5
 board:
     hexes:
         TB06:
@@ -141,8 +141,36 @@ board:
             token: 9
             robber: false
             vertices: VI06,VI07,VJ05,VJ08,VK06,VK07
-    vertices: {}
-    edges: {}
+    vertices:
+        VB08:
+            owner_id: bot-3
+            type: settlement
+        VD08:
+            owner_id: bot-4
+            type: settlement
+        VF08:
+            owner_id: bot-2
+            type: settlement
+        VH08:
+            owner_id: bot-1
+            type: settlement
+    edges:
+        EC07:
+            owner_id: bot-3
+        ED07:
+            owner_id: bot-3
+        EE07:
+            owner_id: bot-4
+        EF07:
+            owner_id: bot-4
+        EG07:
+            owner_id: bot-2
+        EH07:
+            owner_id: bot-2
+        EI07:
+            owner_id: bot-1
+        EJ07:
+            owner_id: bot-1
     ports:
         P1: "3:1"
         P2: wheat
@@ -162,7 +190,7 @@ players:
         sheep: 0
         wheat: 0
         wood: 0
-      vp: 0
+      vp: 1
       skip_count: 0
       dev_cards:
         knight: 0
@@ -185,7 +213,7 @@ players:
         sheep: 0
         wheat: 0
         wood: 0
-      vp: 0
+      vp: 1
       skip_count: 0
       dev_cards:
         knight: 0
@@ -203,12 +231,12 @@ players:
     - id: bot-3
       type: bot
       resources:
-        brick: 0
+        brick: 1
         ore: 0
         sheep: 0
         wheat: 0
         wood: 0
-      vp: 0
+      vp: 1
       skip_count: 0
       dev_cards:
         knight: 0
@@ -226,12 +254,12 @@ players:
     - id: bot-4
       type: bot
       resources:
-        brick: 0
+        brick: 1
         ore: 0
         sheep: 0
         wheat: 0
         wood: 0
-      vp: 0
+      vp: 1
       skip_count: 0
       dev_cards:
         knight: 0
@@ -271,3 +299,75 @@ log:
       player_id: ""
       action: begin
       data: bot-3,bot-4,bot-2,bot-1
+    - timestamp: 1774995480
+      player_id: bot-3
+      action: build_settlement
+      data: VB08
+    - timestamp: 1774998070
+      player_id: bot-3
+      action: build_road
+      data: EC07
+    - timestamp: 1774998073
+      player_id: bot-3
+      action: build_road
+      data: ED07
+    - timestamp: 1774998112
+      player_id: bot-3
+      action: end_turn
+      data: ""
+    - timestamp: 1774998117
+      player_id: bot-4
+      action: build_settlement
+      data: VD08
+    - timestamp: 1774998119
+      player_id: bot-4
+      action: build_road
+      data: EE07
+    - timestamp: 1774998120
+      player_id: bot-4
+      action: build_road
+      data: EF07
+    - timestamp: 1774998121
+      player_id: bot-4
+      action: end_turn
+      data: ""
+    - timestamp: 1774998124
+      player_id: bot-2
+      action: build_settlement
+      data: VF08
+    - timestamp: 1774998125
+      player_id: bot-2
+      action: build_road
+      data: EG07
+    - timestamp: 1774998126
+      player_id: bot-2
+      action: build_road
+      data: EH07
+    - timestamp: 1774998134
+      player_id: bot-2
+      action: end_turn
+      data: ""
+    - timestamp: 1774998136
+      player_id: bot-1
+      action: build_settlement
+      data: VH08
+    - timestamp: 1774998142
+      player_id: bot-1
+      action: build_road
+      data: EI07
+    - timestamp: 1774998143
+      player_id: bot-1
+      action: build_road
+      data: EJ07
+    - timestamp: 1774998145
+      player_id: bot-1
+      action: end_turn
+      data: ""
+    - timestamp: 1774998147
+      player_id: ""
+      action: begin
+      data: bot-1,bot-4,bot-2,bot-3
+    - timestamp: 1774998151
+      player_id: bot-1
+      action: roll
+      data: "6"
