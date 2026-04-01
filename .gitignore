@@ -7,3 +7,8 @@ main
 .server.pid
 catan
 catan-test
+game.yaml
+board.txt
+topology.yaml
+themes.yaml
+*.log

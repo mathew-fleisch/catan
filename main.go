@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	_ "embed"
 	"fmt"
 	"math"
@@ -469,19 +471,60 @@ func (s *GameState) RecalculateVP(playerID string) {
 
 func (s *GameState) RecalculateSpecialVP(topo *Topology) {
 	// 1. Largest Army
+	maxArmy := 2
+	if s.Meta.LargestArmyCount > 2 {
+		maxArmy = s.Meta.LargestArmyCount
+	}
 	for _, p := range s.Players {
-		if p.KnightsPlayed >= 3 && p.KnightsPlayed > s.Meta.LargestArmyCount {
+		if p.KnightsPlayed > maxArmy {
+			maxArmy = p.KnightsPlayed
 			s.Meta.LargestArmyCount = p.KnightsPlayed
 			s.Meta.LargestArmyPlayer = p.ID
 		}
 	}
 
 	// 2. Longest Road
+	lengths := make(map[string]int)
+	maxRoad := 0
 	for _, p := range s.Players {
-		length := s.GetLongestRoad(p.ID, topo)
-		if length >= 5 && length > s.Meta.LongestRoadCount {
-			s.Meta.LongestRoadCount = length
-			s.Meta.LongestRoadPlayer = p.ID
+		l := s.GetLongestRoad(p.ID, topo)
+		lengths[p.ID] = l
+		if l > maxRoad {
+			maxRoad = l
+		}
+	}
+
+	// Broken road case: current owner might have lost it or length decreased
+	if maxRoad < 5 {
+		s.Meta.LongestRoadCount = 0
+		s.Meta.LongestRoadPlayer = ""
+	} else {
+		var winners []string
+		for pID, l := range lengths {
+			if l == maxRoad {
+				winners = append(winners, pID)
+			}
+		}
+
+		if len(winners) == 1 {
+			s.Meta.LongestRoadCount = maxRoad
+			s.Meta.LongestRoadPlayer = winners[0]
+		} else {
+			// Tie. If current owner is in the tie, they keep it.
+			found := false
+			for _, w := range winners {
+				if w == s.Meta.LongestRoadPlayer {
+					found = true
+					break
+				}
+			}
+			if found {
+				s.Meta.LongestRoadCount = maxRoad
+			} else {
+				// Old owner not tied for first, and there is a tie
+				s.Meta.LongestRoadCount = 0
+				s.Meta.LongestRoadPlayer = ""
+			}
 		}
 	}
 
@@ -1730,12 +1773,17 @@ type model struct {
 	viewMode     int // 0: Board, 1: Hand/Trading
 	isSimulating bool
 	isPrompting  bool
+	isChatting   bool
 	inputText    string
+	chatHistory  []string
+	chatScroll   int
 	tradeStep    int    // 0: Select Give, 1: Select Get, 2: Select Target (Bank/Port/Player)
 	tradeGive    string
 	tradeGet     string
 	tradeCursor  int
 	offerIdx     int
+	viewerIdx    int
+	tickCount    int
 }
 
 type simulationMsg []GameState
@@ -1786,6 +1834,7 @@ func initialModel() model {
 		topology: topology,
 		width:    140,
 		height:   60,
+		viewerIdx: -1,
 	}
 	m.relinkPorts()
 
@@ -1865,7 +1914,7 @@ func checkGitHubUser(username string) tea.Cmd {
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return tick()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1889,14 +1938,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
+		m.tickCount++
+		if m.tickCount % 100 == 0 {
+			m.fetchChatComments()
+		}
 		if m.isPlaying && m.historyIdx < len(m.history)-1 {
 			m.historyIdx++
 			m.state = m.history[m.historyIdx]
 			m.relinkPorts()
 			return m, tick()
 		}
-		m.isPlaying = false
-		return m, nil
+		return m, tick() // Always keep ticking
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -1929,20 +1981,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if m.isPrompting {
+		if m.isPrompting || m.isChatting {
 			switch msg.String() {
 			case "enter":
-				m.isPrompting = false
-				if m.inputText != "" {
-					username := m.inputText
+				if m.isPrompting {
+					m.isPrompting = false
+					if m.inputText != "" {
+						username := m.inputText
+						m.inputText = ""
+						m.message = fmt.Sprintf("Checking GitHub user %s...", username)
+						return m, checkGitHubUser(username)
+					}
 					m.inputText = ""
-					m.message = fmt.Sprintf("Checking GitHub user %s...", username)
-					return m, checkGitHubUser(username)
+				} else if m.isChatting {
+					if m.inputText != "" {
+						m.sendChat(m.inputText)
+						m.inputText = ""
+					}
+					m.isChatting = false
 				}
-				m.inputText = ""
+				return m, nil
+			case "up":
+				if m.isChatting && m.chatScroll < len(m.chatHistory)-5 {
+					m.chatScroll++
+				}
+				return m, nil
+			case "down":
+				if m.isChatting && m.chatScroll > 0 {
+					m.chatScroll--
+				}
 				return m, nil
 			case "esc":
 				m.isPrompting = false
+				m.isChatting = false
 				m.inputText = ""
 				return m, nil
 			case "backspace":
@@ -1950,9 +2021,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.inputText = m.inputText[:len(m.inputText)-1]
 				}
 				return m, nil
+			case "space":
+				m.inputText += " "
+				return m, nil
 			default:
 				s := msg.String()
-				if len(s) == 1 && ((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= '0' && s[0] <= '9') || s[0] == '-' || s[0] == '_') {
+				if len(s) == 1 && ((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= '0' && s[0] <= '9') || s[0] == '-' || s[0] == '_' || s[0] == '.' || s[0] == '!' || s[0] == '?') {
 					m.inputText += s
 				}
 				return m, nil
@@ -1997,6 +2071,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "left", "right":
 			if m.viewMode == 0 {
 				m.moveCursor(msg.String())
+			}
+		case "/":
+			if !m.isChatting {
+				m.isChatting = true
+				m.inputText = ""
+			} else {
+				m.isChatting = false
+			}
+		case "esc":
+			if m.isChatting {
+				m.isChatting = false
 			}
 		case "enter":
 			if m.viewMode == 1 {
@@ -2059,6 +2144,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "s":
 			m.runDM("begin")
+		case "[":
+			if len(m.state.Players) > 0 {
+				if m.viewerIdx == -1 {
+					// Find active player index
+					for i, p := range m.state.Players {
+						if p.ID == m.state.Meta.CurrentPlayerID {
+							m.viewerIdx = i
+							break
+						}
+					}
+				}
+				m.viewerIdx = (m.viewerIdx - 1 + len(m.state.Players)) % len(m.state.Players)
+			}
+		case "]":
+			if len(m.state.Players) > 0 {
+				if m.viewerIdx == -1 {
+					// Find active player index
+					for i, p := range m.state.Players {
+						if p.ID == m.state.Meta.CurrentPlayerID {
+							m.viewerIdx = i
+							break
+						}
+					}
+				}
+				m.viewerIdx = (m.viewerIdx + 1) % len(m.state.Players)
+			}
 		case "c":
 			// Cheat resources for testing
 			m.runDM("move", m.state.Meta.CurrentPlayerID, "cheat_resources")
@@ -2080,15 +2191,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case "S":
 					// Submit Offer (Non-active players)
-					var fromPID string
-					for _, p := range m.state.Players {
-						if p.ID != activePID {
-							fromPID = p.ID
-							break
-						}
+					viewerPID := activePID
+					if m.viewerIdx >= 0 && m.viewerIdx < len(m.state.Players) {
+						viewerPID = m.state.Players[m.viewerIdx].ID
 					}
-					if fromPID != "" && m.tradeStep == 2 {
-						m.runDM("move", fromPID, "submit_trade_offer", fmt.Sprintf("%s:%s:1:1", m.tradeGive, m.tradeGet))
+					if viewerPID != activePID && m.tradeStep == 2 {
+						m.runDM("move", viewerPID, "submit_trade_offer", fmt.Sprintf("%s:%s:1:1", m.tradeGive, m.tradeGet))
 						m.tradeStep = 0
 					}
 				case "A":
@@ -2191,6 +2299,79 @@ func (m *model) handleAction() {
 
 	// 2. Authoritative Move
 	m.runDM("move", playerID, action, m.selectedID)
+}
+
+func (m *model) sendChat(text string) {
+	// Post to GitHub if configured
+	token := os.Getenv("GIT_TOKEN")
+	repo := os.Getenv("GITHUB_REPOSITORY")
+	pr := os.Getenv("GITHUB_PR_NUMBER")
+
+	if token != "" && repo != "" && pr != "" {
+		// Post comment via API
+		url := fmt.Sprintf("https://api.github.com/repos/%s/issues/%s/comments", repo, pr)
+		body, _ := json.Marshal(map[string]string{"body": text})
+		req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+		req.Header.Set("Authorization", "token "+token)
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}
+
+	// Also add to local history for immediate feedback
+	m.chatHistory = append(m.chatHistory, fmt.Sprintf("You: %s", text))
+	if len(m.chatHistory) > 50 {
+		m.chatHistory = m.chatHistory[len(m.chatHistory)-50:]
+	}
+}
+
+func (m *model) fetchChatComments() {
+	token := os.Getenv("GIT_TOKEN")
+	repo := os.Getenv("GITHUB_REPOSITORY")
+	pr := os.Getenv("GITHUB_PR_NUMBER")
+
+	if token == "" || repo == "" || pr == "" {
+		if len(m.chatHistory) == 0 {
+			m.chatHistory = []string{
+				"System: Local chat mode (Set GIT_TOKEN/REPO/PR for integration)",
+			}
+		}
+		return
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/issues/%s/comments", repo, pr)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	var comments []struct {
+		User struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Body string `json:"body"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&comments); err != nil {
+		return
+	}
+
+	m.chatHistory = []string{}
+	for _, c := range comments {
+		m.chatHistory = append(m.chatHistory, fmt.Sprintf("%s: %s", c.User.Login, c.Body))
+	}
+	if len(m.chatHistory) > 50 {
+		m.chatHistory = m.chatHistory[len(m.chatHistory)-50:]
+	}
 }
 
 func (m *model) refreshState() {
@@ -2749,6 +2930,9 @@ func (m model) renderBoard() string {
 func (m model) renderTradeView() string {
 	var sb strings.Builder
 	pID := m.state.Meta.CurrentPlayerID
+	if m.viewerIdx >= 0 && m.viewerIdx < len(m.state.Players) {
+		pID = m.state.Players[m.viewerIdx].ID
+	}
 	var player Player
 	found := false
 	for _, p := range m.state.Players {
@@ -2764,7 +2948,12 @@ func (m model) renderTradeView() string {
 	}
 
 	sb.WriteString(titleStyle.Render("TRADING CENTER"))
-	sb.WriteString("\n\n")
+	sb.WriteString("\n")
+	viewerStr := "Active Player"
+	if m.viewerIdx != -1 {
+		viewerStr = fmt.Sprintf("Viewing: %s", player.ID)
+	}
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("[%s]  (Use [ / ] to switch players)", viewerStr)) + "\n\n")
 
 	// Current Hand
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("YOUR RESOURCES") + "\n")
@@ -3181,7 +3370,33 @@ func (m model) View() string {
 	}
 
 	// Combined footer box
-	footerLines := []string{bankView}
+	var footerLines []string
+	
+	if len(m.chatHistory) > 0 || m.isChatting {
+		var chatSB strings.Builder
+		header := "CHAT:"
+		if m.chatScroll > 0 {
+			header = fmt.Sprintf("CHAT (scrolled %d):", m.chatScroll)
+		}
+		chatSB.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13")).Render(header) + "\n")
+		
+		displayCount := 5
+		start := len(m.chatHistory) - displayCount - m.chatScroll
+		if start < 0 { start = 0 }
+		end := len(m.chatHistory) - m.chatScroll
+		if end > len(m.chatHistory) { end = len(m.chatHistory) }
+		if end < 0 { end = 0 }
+
+		for i := start; i < end; i++ {
+			chatSB.WriteString(" " + m.chatHistory[i] + "\n")
+		}
+		if m.isChatting {
+			chatSB.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("8")).Render(" > " + m.inputText + "_") + "\n")
+		}
+		footerLines = append(footerLines, chatSB.String())
+	}
+
+	footerLines = append(footerLines, bankView)
 	
 	metaLine := selectionSB.String()
 	if phaseInfo != "" {
