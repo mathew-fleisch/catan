@@ -3465,16 +3465,21 @@ func (m model) renderBoardView() string {
 		dice1 := toDice(d1)
 		dice2 := toDice(d2)
 
+		rollStyle := lipgloss.NewStyle()
+		if total == 7 {
+			rollStyle = rollStyle.Foreground(lipgloss.Color("9"))
+		}
+
+		diceStyle := rollStyle.Copy()
+		textStyle := rollStyle.Copy().Bold(true)
+
 		rollView := lipgloss.JoinHorizontal(lipgloss.Center,
-			lipgloss.NewStyle().Render(dice1),
-			lipgloss.NewStyle().Bold(true).Render(" + "),
-			lipgloss.NewStyle().Render(dice2),
-			lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf(" = %d", total)),
+			diceStyle.Render(dice1),
+			lipgloss.NewStyle().Width(3).Render(""), // Spacer instead of " + "
+			diceStyle.Render(dice2),
+			textStyle.Render(fmt.Sprintf(" = %d", total)),
 		)
 
-		if total == 7 {
-			rollView = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(rollView)
-		}
 		rollSB.WriteString(rollView + "\n")
 
 		// Resources gained
