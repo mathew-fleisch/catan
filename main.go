@@ -3475,9 +3475,8 @@ func (m model) renderBoardView() string {
 
 		rollView := lipgloss.JoinHorizontal(lipgloss.Center,
 			diceStyle.Render(dice1),
-			lipgloss.NewStyle().Width(3).Render(""), // Spacer instead of " + "
+			textStyle.Copy().Padding(0, 1).Render(fmt.Sprintf("%d", total)),
 			diceStyle.Render(dice2),
-			textStyle.Render(fmt.Sprintf(" = %d", total)),
 		)
 
 		rollSB.WriteString(rollView + "\n")
