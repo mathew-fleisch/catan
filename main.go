@@ -3178,15 +3178,16 @@ func (m model) View() string {
 func (m model) renderBoardView() string {
 	// Board box
 	boardView := borderStyle.Copy().
+		Height(38).
 		Render(m.renderBoard())
 
 	// Dashboard box - Increased width
-	dashboardWidth := 50
+	dashboardWidth := 64
 	if m.width-lipgloss.Width(boardView)-4 < dashboardWidth {
 		dashboardWidth = m.width - lipgloss.Width(boardView) - 4
 	}
-	if dashboardWidth < 30 {
-		dashboardWidth = 30
+	if dashboardWidth < 44 {
+		dashboardWidth = 44
 	}
 
 	sectionStyle := lipgloss.NewStyle().Width(dashboardWidth - 4)
@@ -3251,9 +3252,9 @@ func (m model) renderBoardView() string {
 		dice2 := toDice(d2)
 
 		rollView := lipgloss.JoinHorizontal(lipgloss.Center,
-			lipgloss.NewStyle().Padding(0, 1).Render(dice1),
+			lipgloss.NewStyle().Render(dice1),
 			lipgloss.NewStyle().Bold(true).Render(" + "),
-			lipgloss.NewStyle().Padding(0, 1).Render(dice2),
+			lipgloss.NewStyle().Render(dice2),
 			lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf(" = %d", total)),
 		)
 
@@ -3289,7 +3290,7 @@ func (m model) renderBoardView() string {
 	} else {
 		rollSB.WriteString("No roll yet.\n")
 	}
-	lastRollView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Height(6).Render(rollSB.String())
+	lastRollView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Height(11).Render(rollSB.String())
 
 	// 2. Players Section (Integrated Special VP)
 	var playersSB strings.Builder
@@ -3319,7 +3320,7 @@ func (m model) renderBoardView() string {
 		
 		playersSB.WriteString(style.Render(line1) + "\n")
 	}
-	playersView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Height(6).Render(playersSB.String())
+	playersView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Height(11).Render(playersSB.String())
 
 	// Combine Top Row
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, lastRollView, playersView)
@@ -3379,7 +3380,7 @@ func (m model) renderBoardView() string {
 	} else {
 		curResView = sectionStyle.Copy().Render(" No player active.")
 	}
-	curAssetsBox := sectionStyle.Copy().Height(9).Render(curResView)
+	curAssetsBox := sectionStyle.Copy().Height(10).Render(curResView)
 
 	// 4. Resource Legend Section (BANK - Horizontal for Footer)
 	var bankSB strings.Builder
@@ -3403,7 +3404,6 @@ func (m model) renderBoardView() string {
 	isRoll := m.state.Meta.Phase == "roll" && !isInv && !isFin
 	isAct := m.state.Meta.Phase == "action" && !isInv && !isFin
 
-	var controlsSB strings.Builder
 	disabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	enabledStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	
@@ -3414,31 +3414,37 @@ func (m model) renderBoardView() string {
 		return disabledStyle.Render(label) + "\n"
 	}
 
-	// GAME CONTROLS
-	controlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("GAME CONTROLS") + "\n")
-	controlsSB.WriteString(ctrl(" Arrows : Navigate", true))
-	controlsSB.WriteString(ctrl(" Enter  : Build/Upgrade", isAct || isSetup))
-	controlsSB.WriteString(ctrl(" R      : Roll Dice", isRoll))
-	controlsSB.WriteString(ctrl(" B      : Buy Dev Card", isAct))
-	controlsSB.WriteString(ctrl(" K      : Play Knight", isAct))
-	controlsSB.WriteString(ctrl(" E      : End Turn", isAct || isSetup))
-	controlsSB.WriteString(ctrl(" Q      : Quit", true))
+	// GAME CONTROLS (Left side)
+	var gameControlsSB strings.Builder
+	gameControlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("GAME CONTROLS") + "\n")
+	gameControlsSB.WriteString(ctrl(" Arrows : Navigate", true))
+	gameControlsSB.WriteString(ctrl(" Enter  : Build/Upgrade", isAct || isSetup))
+	gameControlsSB.WriteString(ctrl(" R      : Roll Dice", isRoll))
+	gameControlsSB.WriteString(ctrl(" B      : Buy Dev Card", isAct))
+	gameControlsSB.WriteString(ctrl(" K      : Play Knight", isAct))
+	gameControlsSB.WriteString(ctrl(" E      : End Turn", isAct || isSetup))
+	gameControlsSB.WriteString(ctrl(" Q      : Quit", true))
+	gameControlsView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Render(gameControlsSB.String())
 
-	// SETUP CONTROLS
-	controlsSB.WriteString("\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("SETUP") + "\n")
-	controlsSB.WriteString(ctrl(" G : Add Guest Player", isInv))
-	controlsSB.WriteString(ctrl(" B : Add Bot Player", isInv))
-	controlsSB.WriteString(ctrl(" U : Add Git Player", isInv))
-	controlsSB.WriteString(ctrl(" X : Remove Last Player", isInv && len(m.state.Players) > 0))
-	controlsSB.WriteString(ctrl(" S : Start Game", isInv && len(m.state.Players) >= 2))
+	// SETUP/FINAL OPTIONS (Right side)
+	var extraControlsSB strings.Builder
+	if isInv {
+		extraControlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("SETUP") + "\n")
+		extraControlsSB.WriteString(ctrl(" G : Add Guest Player", isInv))
+		extraControlsSB.WriteString(ctrl(" B : Add Bot Player", isInv))
+		extraControlsSB.WriteString(ctrl(" U : Add Git Player", isInv))
+		extraControlsSB.WriteString(ctrl(" X : Remove Last Player", isInv && len(m.state.Players) > 0))
+		extraControlsSB.WriteString(ctrl(" S : Start Game", isInv && len(m.state.Players) >= 2))
+	} else if isFin {
+		extraControlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("FINAL OPTIONS") + "\n")
+		extraControlsSB.WriteString(ctrl(" v : View Final Board", isFin))
+		extraControlsSB.WriteString(ctrl(" I : New Game (Reset)", isFin))
+		extraControlsSB.WriteString(ctrl(" P : Playback Log", isFin))
+	}
+	extraControlsView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Render(extraControlsSB.String())
 
-	// FINAL OPTIONS
-	controlsSB.WriteString("\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("FINAL OPTIONS") + "\n")
-	controlsSB.WriteString(ctrl(" v : View Final Board", isFin))
-	controlsSB.WriteString(ctrl(" I : New Game (Reset)", isFin))
-	controlsSB.WriteString(ctrl(" P : Playback Log", isFin))
-
-	controlsView := sectionStyle.Copy().Height(18).Render(controlsSB.String())
+	controlsRow := lipgloss.JoinHorizontal(lipgloss.Top, gameControlsView, extraControlsView)
+	controlsView := sectionStyle.Copy().Height(10).Render(controlsRow)
 
 	// Combine Dashboard
 	dashboardContent := lipgloss.JoinVertical(lipgloss.Left,
@@ -3448,10 +3454,9 @@ func (m model) renderBoardView() string {
 		controlsView,
 	)
 
-	boardHeight := lipgloss.Height(boardView)
 	dashboardView := borderStyle.Copy().
 		Width(dashboardWidth).
-		Height(boardHeight - 2). // -2 for the border of dashboardView itself
+		Height(38).
 		Render(dashboardContent)
 
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, boardView, dashboardView)
@@ -3683,7 +3688,22 @@ func handlePlayback(state GameState, topo Topology) {
 }
 
 func toDice(n int) string {
-	return fmt.Sprintf("%d", n)
+	switch n {
+	case 1:
+		return "╭───────╮\n│       │\n│   ●   │\n│       │\n╰───────╯"
+	case 2:
+		return "╭───────╮\n│ ●     │\n│       │\n│     ● │\n╰───────╯"
+	case 3:
+		return "╭───────╮\n│ ●     │\n│   ●   │\n│     ● │\n╰───────╯"
+	case 4:
+		return "╭───────╮\n│ ●   ● │\n│       │\n│ ●   ● │\n╰───────╯"
+	case 5:
+		return "╭───────╮\n│ ●   ● │\n│   ●   │\n│ ●   ● │\n╰───────╯"
+	case 6:
+		return "╭───────╮\n│ ●   ● │\n│ ●   ● │\n│ ●   ● │\n╰───────╯"
+	default:
+		return fmt.Sprintf("%d", n)
+	}
 }
 
 func toASCII(r rune) string {
