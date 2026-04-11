@@ -1736,6 +1736,8 @@ type Topology struct {
 type HexTopology struct {
 	AdjacentHexes []string `yaml:"adjacent_hexes"`
 	Vertices      []string `yaml:"vertices"`
+	X             int      `yaml:"x"`
+	Y             int      `yaml:"y"`
 }
 
 type EdgeTopology struct {
@@ -1784,6 +1786,8 @@ type model struct {
 	offerIdx     int
 	viewerIdx    int
 	tickCount    int
+	victimIdx    int
+	discardRes   map[string]int
 }
 
 type simulationMsg []GameState
@@ -1832,11 +1836,13 @@ func initialModel() model {
 		board:    string(boardData),
 		state:    state,
 		topology: topology,
-		width:    140,
-		height:   60,
-		viewerIdx: -1,
+		width:      140,
+		height:     60,
+		viewerIdx:  -1,
+		discardRes: make(map[string]int),
 	}
 	m.relinkPorts()
+	m.calculateHexCenters()
 
 	playerStyles := make(map[string]lipgloss.Style)
 	for i, p := range state.Players {
@@ -1854,6 +1860,20 @@ func initialModel() model {
 	m.selectedType = "vertex"
 	m.selectedID = firstVertex
 	return m
+}
+
+func (m *model) calculateHexCenters() {
+	for id, h := range m.topology.Hexes {
+		var avgX, avgY float64
+		for _, vID := range h.Vertices {
+			v := m.topology.Vertices[vID]
+			avgX += float64(v.X)
+			avgY += float64(v.Y)
+		}
+		h.X = int(2.0*(avgX/6.0)) + 1
+		h.Y = int(1.5*(avgY/6.0)) + 3
+		m.topology.Hexes[id] = h
+	}
 }
 
 func (m *model) relinkPorts() {
@@ -2051,7 +2071,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return simulationMsg(s.Simulate(&t))
 			}
 		case "up", "down":
-			if m.viewMode == 1 {
+			if m.state.Meta.Phase == "robber_discard" {
+				if msg.String() == "up" {
+					m.tradeCursor = (m.tradeCursor - 1 + 5) % 5
+				} else {
+					m.tradeCursor = (m.tradeCursor + 1) % 5
+				}
+			} else if m.state.Meta.Phase == "robber_steal" {
+				victims := m.getVictims()
+				if len(victims) > 0 {
+					if msg.String() == "up" {
+						m.victimIdx = (m.victimIdx - 1 + len(victims)) % len(victims)
+					} else {
+						m.victimIdx = (m.victimIdx + 1) % len(victims)
+					}
+				}
+			} else if m.viewMode == 1 {
 				if m.tradeStep < 2 {
 					if msg.String() == "up" {
 						m.tradeCursor = (m.tradeCursor - 1 + 5) % 5
@@ -2069,7 +2104,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveCursor(msg.String())
 			}
 		case "left", "right":
-			if m.viewMode == 0 {
+			if m.state.Meta.Phase == "robber_discard" {
+				res := []string{"wood", "brick", "sheep", "wheat", "ore"}
+				r := res[m.tradeCursor]
+				if msg.String() == "left" {
+					if m.discardRes[r] > 0 {
+						m.discardRes[r]--
+					}
+				} else {
+					// Check if player has enough resources
+					viewedPlayerID := m.state.Meta.CurrentPlayerID
+					if m.viewerIdx != -1 {
+						viewedPlayerID = m.state.Players[m.viewerIdx].ID
+					}
+					for _, p := range m.state.Players {
+						if p.ID == viewedPlayerID {
+							if m.discardRes[r] < p.Resources[r] {
+								m.discardRes[r]++
+							}
+							break
+						}
+					}
+				}
+			} else if m.viewMode == 0 {
 				m.moveCursor(msg.String())
 			}
 		case "/":
@@ -2277,8 +2334,76 @@ func (m *model) saveState() {
 func (m *model) handleAction() {
 	action := ""
 	playerID := m.state.Meta.CurrentPlayerID
+	target := m.selectedID
 
-	if m.selectedType == "vertex" {
+	if m.state.Meta.Phase == "robber_discard" {
+		viewedPlayerID := playerID
+		if m.viewerIdx != -1 {
+			viewedPlayerID = m.state.Players[m.viewerIdx].ID
+		}
+		// Verify viewedPlayerID is in DiscardingPlayers
+		isDiscarding := false
+		for _, id := range m.state.Meta.DiscardingPlayers {
+			if id == viewedPlayerID {
+				isDiscarding = true
+				break
+			}
+		}
+		if !isDiscarding {
+			m.message = "This player does not need to discard."
+			return
+		}
+
+		// Calculate total to discard
+		var p Player
+		for _, pl := range m.state.Players {
+			if pl.ID == viewedPlayerID {
+				p = pl
+				break
+			}
+		}
+		totalResources := 0
+		for _, c := range p.Resources {
+			totalResources += c
+		}
+		needed := totalResources / 2
+		selected := 0
+		var parts []string
+		for res, count := range m.discardRes {
+			if count > 0 {
+				parts = append(parts, fmt.Sprintf("%s:%d", res, count))
+				selected += count
+			}
+		}
+		if selected != needed {
+			m.message = fmt.Sprintf("Must select exactly %d resources (selected %d).", needed, selected)
+			return
+		}
+		action = "discard"
+		target = strings.Join(parts, ",")
+		playerID = viewedPlayerID // Force action for the viewed player
+		// Reset discardRes for next discarder
+		m.discardRes = make(map[string]int)
+
+	} else if m.state.Meta.Phase == "robber_move" {
+		if m.selectedType == "hex" {
+			action = "move_robber"
+		} else {
+			m.message = "Must select a hex for the robber."
+			return
+		}
+	} else if m.state.Meta.Phase == "robber_steal" {
+		victims := m.getVictims()
+		if len(victims) > 0 {
+			victimID := victims[m.victimIdx%len(victims)]
+			action = "steal_resource"
+			target = victimID
+		} else {
+			// Should have transitioned already if no victims, but safe check
+			m.runDM("move", playerID, "steal_resource", "none")
+			return
+		}
+	} else if m.selectedType == "vertex" {
 		// Contextual: if settlement exists and is ours, build city. Otherwise settlement.
 		if v, ok := m.state.Board.Vertices[m.selectedID]; ok && v.OwnerID == playerID && v.Type == "settlement" {
 			action = "build_city"
@@ -2300,7 +2425,7 @@ func (m *model) handleAction() {
 	}
 
 	// 2. Authoritative Move
-	m.runDM("move", playerID, action, m.selectedID)
+	m.runDM("move", playerID, action, target)
 }
 
 func (m *model) sendChat(text string) {
@@ -2402,21 +2527,80 @@ func (m *model) validateMove(action string) error {
 	return m.state.validateMoveLocal(m.state.Meta.CurrentPlayerID, action, m.selectedID, &m.topology)
 }
 
+func (m *model) getVictims() []string {
+	var hID string
+	for id, h := range m.state.Board.Hexes {
+		if h.Robber {
+			hID = id
+			break
+		}
+	}
+	if hID == "" {
+		return nil
+	}
+
+	h := m.state.Board.Hexes[hID]
+	victims := make(map[string]bool)
+	verts := strings.Split(h.Vertices, ",")
+	currentPlayerID := m.state.Meta.CurrentPlayerID
+
+	for _, vID := range verts {
+		if v, ok := m.state.Board.Vertices[vID]; ok && v.OwnerID != "" && v.OwnerID != "null" && v.OwnerID != currentPlayerID {
+			// Check if they have resources
+			for _, p := range m.state.Players {
+				if p.ID == v.OwnerID {
+					total := 0
+					for _, c := range p.Resources {
+						total += c
+					}
+					if total > 0 {
+						victims[v.OwnerID] = true
+					}
+					break
+				}
+			}
+		}
+	}
+
+	var result []string
+	for id := range victims {
+		result = append(result, id)
+	}
+	sort.Strings(result)
+	return result
+}
+
 func (m *model) moveCursor(dir string) {
 	var curX, curY int
 	if m.selectedType == "vertex" {
 		v := m.topology.Vertices[m.selectedID]
 		curX, curY = v.X, v.Y
-	} else {
+	} else if m.selectedType == "edge" {
 		e := m.topology.Edges[m.selectedID]
 		curX, curY = e.X, e.Y
+	} else {
+		h := m.topology.Hexes[m.selectedID]
+		curX, curY = h.X, h.Y
 	}
 
 	bestID := ""
 	bestType := ""
 	minDist := 1000.0
 
-	if m.selectedType == "vertex" {
+	if m.state.Meta.Phase == "robber_move" {
+		// Only look at other hexes
+		for id, h := range m.topology.Hexes {
+			if id == m.selectedID && m.selectedType == "hex" {
+				continue
+			}
+			dist := m.calculateDistance(curX, curY, h.X, h.Y, dir)
+			if dist < minDist {
+				minDist = dist
+				bestID = id
+				bestType = "hex"
+			}
+		}
+	} else if m.selectedType == "vertex" {
 		// Only look at adjacent edges
 		vTopo := m.topology.Vertices[m.selectedID]
 		for _, eID := range vTopo.AdjacentEdges {
@@ -2428,7 +2612,7 @@ func (m *model) moveCursor(dir string) {
 				bestType = "edge"
 			}
 		}
-	} else {
+	} else if m.selectedType == "edge" {
 		// Only look at adjacent vertices
 		eTopo := m.topology.Edges[m.selectedID]
 		for _, vID := range eTopo.AdjacentVertices {
@@ -2439,6 +2623,13 @@ func (m *model) moveCursor(dir string) {
 				bestID = vID
 				bestType = "vertex"
 			}
+		}
+	} else {
+		// If currently on a hex but phase changed, jump to first vertex of that hex
+		hTopo := m.topology.Hexes[m.selectedID]
+		if len(hTopo.Vertices) > 0 {
+			bestID = hTopo.Vertices[0]
+			bestType = "vertex"
 		}
 	}
 
@@ -2912,6 +3103,29 @@ func (m model) renderBoard() string {
 				applyStyle(charX, yBot, 1, effectiveCursorStyle, slope)
 			}
 		}
+	} else if m.selectedType == "hex" {
+		topo := m.topology.Hexes[m.selectedID]
+		hState := m.state.Board.Hexes[m.selectedID]
+		res, ok := resourceStyles[hState.Resource]
+		if !ok {
+			res = resourceStyles["desert"]
+		}
+		style := effectiveCursorStyle.Copy().Foreground(res.Color)
+
+		// Re-render the middle line with the cursor style
+		var midStr string
+		if hState.Robber {
+			midStr = "▟██ ROB ▙"
+		} else if hState.Token > 0 {
+			if hState.Token < 10 {
+				midStr = fmt.Sprintf("▟█ %d █%s█▙", hState.Token, res.Icon)
+			} else {
+				midStr = fmt.Sprintf("▟█%d█%s█▙", hState.Token, res.Icon)
+			}
+		} else {
+			midStr = fmt.Sprintf("▟███%s██▙", res.Icon)
+		}
+		applyStyle(topo.X-4, topo.Y, 9, style, midStr)
 	}
 
 	// Reconstruct the board
@@ -3325,6 +3539,80 @@ func (m model) renderBoardView() string {
 	// Combine Top Row
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, lastRollView, playersView)
 
+	// --- 2.5 Robber Actions Section ---
+	var robberSB strings.Builder
+	robberPhase := m.state.Meta.Phase
+	if robberPhase == "robber_discard" || robberPhase == "robber_move" || robberPhase == "robber_steal" {
+		robberSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.Color("9")).Render("ROBBER ACTION") + "\n")
+		switch robberPhase {
+		case "robber_discard":
+			viewedPlayerID := m.state.Meta.CurrentPlayerID
+			if m.viewerIdx != -1 {
+				viewedPlayerID = m.state.Players[m.viewerIdx].ID
+			}
+			isDiscarding := false
+			for _, id := range m.state.Meta.DiscardingPlayers {
+				if id == viewedPlayerID {
+					isDiscarding = true
+					break
+				}
+			}
+			if isDiscarding {
+				var p Player
+				for _, pl := range m.state.Players {
+					if pl.ID == viewedPlayerID {
+						p = pl
+						break
+					}
+				}
+				total := 0
+				for _, c := range p.Resources {
+					total += c
+				}
+				needed := total / 2
+				selected := 0
+				for _, c := range m.discardRes {
+					selected += c
+				}
+				robberSB.WriteString(fmt.Sprintf(" %s must discard %d cards\n", viewedPlayerID, needed))
+				robberSB.WriteString(fmt.Sprintf(" Progress: [%d/%d]\n", selected, needed))
+				resOrder := []string{"wood", "brick", "sheep", "wheat", "ore"}
+				for i, r := range resOrder {
+					cursor := "  "
+					if m.tradeCursor == i {
+						cursor = "> "
+					}
+					style := resourceStyles[r]
+					robberSB.WriteString(fmt.Sprintf("%s%s %s: %d/%d (discard %d)\n", cursor, style.Icon, strings.ToUpper(r), p.Resources[r], p.Resources[r], m.discardRes[r]))
+				}
+				robberSB.WriteString(" (Arrows to select/adjust, Enter to Confirm)\n")
+			} else {
+				robberSB.WriteString(" Waiting for others to discard...\n")
+				for _, id := range m.state.Meta.DiscardingPlayers {
+					robberSB.WriteString(fmt.Sprintf(" - %s\n", id))
+				}
+			}
+		case "robber_move":
+			robberSB.WriteString(fmt.Sprintf(" %s: SELECT NEW HEX\n", m.state.Meta.CurrentPlayerID))
+			robberSB.WriteString(" Use Arrows to move cursor to a hex,\n then hit ENTER to move Robber.\n")
+		case "robber_steal":
+			robberSB.WriteString(fmt.Sprintf(" %s: SELECT VICTIM\n", m.state.Meta.CurrentPlayerID))
+			victims := m.getVictims()
+			for i, vID := range victims {
+				cursor := "  "
+				if m.victimIdx%len(victims) == i {
+					cursor = "> "
+				}
+				robberSB.WriteString(fmt.Sprintf("%s%s\n", cursor, vID))
+			}
+			robberSB.WriteString(" (Up/Down to select, Enter to Steal)\n")
+		}
+	}
+	robberView := ""
+	if robberSB.Len() > 0 {
+		robberView = sectionStyle.Copy().Height(10).Render(robberSB.String())
+	}
+
 	// 3. Current Player Assets Section (TWO COLUMNS)
 	var curResView string
 	if currentPlayer.ID != "" {
@@ -3381,6 +3669,9 @@ func (m model) renderBoardView() string {
 		curResView = sectionStyle.Copy().Render(" No player active.")
 	}
 	curAssetsBox := sectionStyle.Copy().Height(10).Render(curResView)
+	if robberView != "" {
+		curAssetsBox = sectionStyle.Copy().Height(6).Render(curResView)
+	}
 
 	// 4. Resource Legend Section (BANK - Horizontal for Footer)
 	var bankSB strings.Builder
@@ -3445,14 +3736,19 @@ func (m model) renderBoardView() string {
 
 	controlsRow := lipgloss.JoinHorizontal(lipgloss.Top, gameControlsView, extraControlsView)
 	controlsView := sectionStyle.Copy().Height(10).Render(controlsRow)
+	if robberView != "" {
+		controlsView = sectionStyle.Copy().Height(7).Render(controlsRow)
+	}
 
 	// Combine Dashboard
-	dashboardContent := lipgloss.JoinVertical(lipgloss.Left,
-		headerView,
-		topRow,
-		curAssetsBox,
-		controlsView,
-	)
+	var dashParts []string
+	dashParts = append(dashParts, headerView, topRow)
+	if robberView != "" {
+		dashParts = append(dashParts, robberView)
+	}
+	dashParts = append(dashParts, curAssetsBox, controlsView)
+
+	dashboardContent := lipgloss.JoinVertical(lipgloss.Left, dashParts...)
 
 	dashboardView := borderStyle.Copy().
 		Width(dashboardWidth).
