@@ -3539,80 +3539,6 @@ func (m model) renderBoardView() string {
 	// Combine Top Row
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, lastRollView, playersView)
 
-	// --- 2.5 Robber Actions Section ---
-	var robberSB strings.Builder
-	robberPhase := m.state.Meta.Phase
-	if robberPhase == "robber_discard" || robberPhase == "robber_move" || robberPhase == "robber_steal" {
-		robberSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.Color("9")).Render("ROBBER ACTION") + "\n")
-		switch robberPhase {
-		case "robber_discard":
-			viewedPlayerID := m.state.Meta.CurrentPlayerID
-			if m.viewerIdx != -1 {
-				viewedPlayerID = m.state.Players[m.viewerIdx].ID
-			}
-			isDiscarding := false
-			for _, id := range m.state.Meta.DiscardingPlayers {
-				if id == viewedPlayerID {
-					isDiscarding = true
-					break
-				}
-			}
-			if isDiscarding {
-				var p Player
-				for _, pl := range m.state.Players {
-					if pl.ID == viewedPlayerID {
-						p = pl
-						break
-					}
-				}
-				total := 0
-				for _, c := range p.Resources {
-					total += c
-				}
-				needed := total / 2
-				selected := 0
-				for _, c := range m.discardRes {
-					selected += c
-				}
-				robberSB.WriteString(fmt.Sprintf(" %s must discard %d cards\n", viewedPlayerID, needed))
-				robberSB.WriteString(fmt.Sprintf(" Progress: [%d/%d]\n", selected, needed))
-				resOrder := []string{"wood", "brick", "sheep", "wheat", "ore"}
-				for i, r := range resOrder {
-					cursor := "  "
-					if m.tradeCursor == i {
-						cursor = "> "
-					}
-					style := resourceStyles[r]
-					robberSB.WriteString(fmt.Sprintf("%s%s %s: %d/%d (discard %d)\n", cursor, style.Icon, strings.ToUpper(r), p.Resources[r], p.Resources[r], m.discardRes[r]))
-				}
-				robberSB.WriteString(" (Arrows to select/adjust, Enter to Confirm)\n")
-			} else {
-				robberSB.WriteString(" Waiting for others to discard...\n")
-				for _, id := range m.state.Meta.DiscardingPlayers {
-					robberSB.WriteString(fmt.Sprintf(" - %s\n", id))
-				}
-			}
-		case "robber_move":
-			robberSB.WriteString(fmt.Sprintf(" %s: SELECT NEW HEX\n", m.state.Meta.CurrentPlayerID))
-			robberSB.WriteString(" Use Arrows to move cursor to a hex,\n then hit ENTER to move Robber.\n")
-		case "robber_steal":
-			robberSB.WriteString(fmt.Sprintf(" %s: SELECT VICTIM\n", m.state.Meta.CurrentPlayerID))
-			victims := m.getVictims()
-			for i, vID := range victims {
-				cursor := "  "
-				if m.victimIdx%len(victims) == i {
-					cursor = "> "
-				}
-				robberSB.WriteString(fmt.Sprintf("%s%s\n", cursor, vID))
-			}
-			robberSB.WriteString(" (Up/Down to select, Enter to Steal)\n")
-		}
-	}
-	robberView := ""
-	if robberSB.Len() > 0 {
-		robberView = sectionStyle.Copy().Height(10).Render(robberSB.String())
-	}
-
 	// 3. Current Player Assets Section (TWO COLUMNS)
 	var curResView string
 	if currentPlayer.ID != "" {
@@ -3669,9 +3595,6 @@ func (m model) renderBoardView() string {
 		curResView = sectionStyle.Copy().Render(" No player active.")
 	}
 	curAssetsBox := sectionStyle.Copy().Height(10).Render(curResView)
-	if robberView != "" {
-		curAssetsBox = sectionStyle.Copy().Height(6).Render(curResView)
-	}
 
 	// 4. Resource Legend Section (BANK - Horizontal for Footer)
 	var bankSB strings.Builder
@@ -3717,9 +3640,69 @@ func (m model) renderBoardView() string {
 	gameControlsSB.WriteString(ctrl(" Q      : Quit", true))
 	gameControlsView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Render(gameControlsSB.String())
 
-	// SETUP/FINAL OPTIONS (Right side)
+	// SETUP/FINAL OPTIONS / ROBBER ACTIONS (Right side)
 	var extraControlsSB strings.Builder
-	if isInv {
+	robberPhase := m.state.Meta.Phase
+	if robberPhase == "robber_discard" || robberPhase == "robber_move" || robberPhase == "robber_steal" {
+		extraControlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.Color("9")).Render("ROBBER ACTION") + "\n")
+		switch robberPhase {
+		case "robber_discard":
+			viewedPlayerID := m.state.Meta.CurrentPlayerID
+			if m.viewerIdx != -1 {
+				viewedPlayerID = m.state.Players[m.viewerIdx].ID
+			}
+			isDiscarding := false
+			for _, id := range m.state.Meta.DiscardingPlayers {
+				if id == viewedPlayerID {
+					isDiscarding = true
+					break
+				}
+			}
+			if isDiscarding {
+				var p Player
+				for _, pl := range m.state.Players {
+					if pl.ID == viewedPlayerID {
+						p = pl
+						break
+					}
+				}
+				total := 0
+				for _, c := range p.Resources {
+					total += c
+				}
+				needed := total / 2
+				selected := 0
+				for _, c := range m.discardRes {
+					selected += c
+				}
+				extraControlsSB.WriteString(fmt.Sprintf(" %s discards %d/%d\n", viewedPlayerID, selected, needed))
+				resOrder := []string{"wood", "brick", "sheep", "wheat", "ore"}
+				for i, r := range resOrder {
+					cursor := " "
+					if m.tradeCursor == i {
+						cursor = ">"
+					}
+					style := resourceStyles[r]
+					extraControlsSB.WriteString(fmt.Sprintf("%s%s %d/%d (%d)\n", cursor, style.Icon, p.Resources[r], p.Resources[r], m.discardRes[r]))
+				}
+			} else {
+				extraControlsSB.WriteString(" Waiting: " + strings.Join(m.state.Meta.DiscardingPlayers, ",") + "\n")
+			}
+		case "robber_move":
+			extraControlsSB.WriteString(fmt.Sprintf(" %s: SELECT HEX\n", m.state.Meta.CurrentPlayerID))
+			extraControlsSB.WriteString(" Use Arrows to move,\n then Enter to move Robber.\n")
+		case "robber_steal":
+			extraControlsSB.WriteString(fmt.Sprintf(" %s: STEAL\n", m.state.Meta.CurrentPlayerID))
+			victims := m.getVictims()
+			for i, vID := range victims {
+				cursor := "  "
+				if m.victimIdx%len(victims) == i {
+					cursor = "> "
+				}
+				extraControlsSB.WriteString(fmt.Sprintf("%s%s\n", cursor, vID))
+			}
+		}
+	} else if isInv {
 		extraControlsSB.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("SETUP") + "\n")
 		extraControlsSB.WriteString(ctrl(" G : Add Guest Player", isInv))
 		extraControlsSB.WriteString(ctrl(" B : Add Bot Player", isInv))
@@ -3736,19 +3719,14 @@ func (m model) renderBoardView() string {
 
 	controlsRow := lipgloss.JoinHorizontal(lipgloss.Top, gameControlsView, extraControlsView)
 	controlsView := sectionStyle.Copy().Height(10).Render(controlsRow)
-	if robberView != "" {
-		controlsView = sectionStyle.Copy().Height(7).Render(controlsRow)
-	}
 
 	// Combine Dashboard
-	var dashParts []string
-	dashParts = append(dashParts, headerView, topRow)
-	if robberView != "" {
-		dashParts = append(dashParts, robberView)
-	}
-	dashParts = append(dashParts, curAssetsBox, controlsView)
-
-	dashboardContent := lipgloss.JoinVertical(lipgloss.Left, dashParts...)
+	dashboardContent := lipgloss.JoinVertical(lipgloss.Left,
+		headerView,
+		topRow,
+		curAssetsBox,
+		controlsView,
+	)
 
 	dashboardView := borderStyle.Copy().
 		Width(dashboardWidth).
