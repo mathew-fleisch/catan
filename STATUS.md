@@ -49,9 +49,22 @@ The project has successfully transitioned from a grid-constrained rendering syst
 - [x] **Player Guide**: Instructions for joining and playing via GitHub PRs.
 - [x] **Technical Reference**: Documented the `topology.yaml` and rule engine specifics.
 
+## Phase 15: Bot AI, State Integrity & Portability (Completed)
+- [x] **Fix Bot AI "Instant Win" Bug**: Resolved critical issue where bots performed illegal, free building actions after setup.
+- [x] **Strict Turn Order Enforcement**: Added validation to `validateMoveLocal` to reject out-of-turn actions.
+- [x] **Tightened Resource Validation**: Ensured resource costs are checked during the action phase, even if status is still "setup".
+- [x] **State Integrity**: Patched `DeepCopy` to include `HostID` and deep-copy `PendingOffers` to prevent simulation state divergence.
+- [x] **Setup Phase Calibration**: Corrected piece count limits and `EndTurn` triggers for `setup_1` and `setup_2` (2 settlements and 4 roads total).
+- [x] **Binary Portability (Embedding)**: Embedded `board.txt`, `topology.yaml`, `themes.yaml`, and `font.ttf` into the binary using `//go:embed`.
+- [x] **Decoupled Architecture**: Removed runtime dependencies on local source files; the binary now initializes a fresh state if `game.yaml` is missing.
+- [x] **Automated Bot-Only Play**: Implemented auto-start and continuous play for games with only bot players, requiring no user input to reach completion.
+
+## Phase 16: CI/CD Refinement (Completed)
+- [x] **GoReleaser Integration**: Configured `.goreleaser.yaml` for cross-platform builds (Linux, macOS, Windows; amd64, arm64).
+- [x] **Automated Release Workflow**: Implemented GitHub Action to auto-tag and release new binaries on every merge to `main`.
+
 ---
 
-## Next Steps (Session 12)
-1.  **Phase 12: CI/CD Refinement**: Full automation of replay asset generation in `dm.yml`.
-2.  **Phase 13: GitHub Pages Hosting**: Automated deployment of the `index.html` game viewer.
-3.  **Phase 14: Final Polish**: Performance optimizations and bug fixes for the TUI.
+## Next Steps (Session 17)
+1.  **Phase 17: Multi-Repo Integration**: Finalize the workflow for the `mathew-fleisch/settlers-of-catan` gameplay repository.
+2.  **Phase 18: Final Polish**: Performance optimizations and UX improvements for the TUI.

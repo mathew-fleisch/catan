@@ -31,6 +31,15 @@ import (
 //go:embed font.ttf
 var defaultFont []byte
 
+//go:embed board.txt
+var embeddedBoard string
+
+//go:embed topology.yaml
+var embeddedTopology []byte
+
+//go:embed themes.yaml
+var embeddedThemes []byte
+
 type Theme struct {
 	Resources map[string]string `yaml:"resources"`
 	Colors    map[string]string `yaml:"colors"`
@@ -63,7 +72,7 @@ var activeTheme = Theme{
 func loadTheme() {
 	data, err := os.ReadFile("themes.yaml")
 	if err != nil {
-		return // Use default
+		data = embeddedThemes
 	}
 	var config ThemeConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
@@ -161,6 +170,7 @@ type Meta struct {
 	MaxSkips            int          `yaml:"max_skips"`
 	TurnOrder           []string     `yaml:"turn_order"`
 	CurrentPlayerID     string       `yaml:"current_player_id"`
+	HostID              string       `yaml:"host_id"`
 	Phase               string       `yaml:"phase"`
 	DevCardDeck         []string     `yaml:"dev_card_deck"`
 	PendingOffers       []TradeOffer `yaml:"pending_offers"`
@@ -214,6 +224,7 @@ type Player struct {
 	DevCards      map[string]int `yaml:"dev_cards"`
 	NewDevCards   map[string]int `yaml:"new_dev_cards"` // Bought this turn
 	KnightsPlayed int            `yaml:"knights_played"`
+	IsForfeited   bool           `yaml:"is_forfeited"`
 }
 
 type LogEntry struct {
@@ -387,6 +398,9 @@ func (s *GameState) Join(playerID string, pType string) error {
 		DevCards:    make(map[string]int),
 		NewDevCards: make(map[string]int),
 	})
+	if len(s.Players) == 1 {
+		s.Meta.HostID = playerID
+	}
 	// Re-initialize resource maps to be sure
 	idx := len(s.Players) - 1
 	s.Players[idx].Resources = map[string]int{"wood": 0, "brick": 0, "sheep": 0, "wheat": 0, "ore": 0}
@@ -613,24 +627,100 @@ func (s *GameState) EndTurn() {
 
 	if s.Meta.Status == "setup" {
 		if s.Meta.Phase == "setup_1" {
-			if idx < len(order)-1 {
-				s.Meta.CurrentPlayerID = order[idx+1]
-			} else {
+			// Find next active player in forward order
+			nextFound := false
+			for i := idx + 1; i < len(order); i++ {
+				pID := order[i]
+				for _, p := range s.Players {
+					if p.ID == pID && !p.IsForfeited {
+						s.Meta.CurrentPlayerID = pID
+						nextFound = true
+						break
+					}
+				}
+				if nextFound { break }
+			}
+			if !nextFound {
 				s.Meta.Phase = "setup_2"
-				// Last player goes again
+				// For setup_2, start from the last player and go backwards
+				for i := len(order) - 1; i >= 0; i-- {
+					pID := order[i]
+					for _, p := range s.Players {
+						if p.ID == pID && !p.IsForfeited {
+							s.Meta.CurrentPlayerID = pID
+							nextFound = true
+							break
+						}
+					}
+					if nextFound { break }
+				}
 			}
 		} else if s.Meta.Phase == "setup_2" {
-			if idx > 0 {
-				s.Meta.CurrentPlayerID = order[idx-1]
-			} else {
+			// Find next active player in reverse order
+			nextFound := false
+			for i := idx - 1; i >= 0; i-- {
+				pID := order[i]
+				for _, p := range s.Players {
+					if p.ID == pID && !p.IsForfeited {
+						s.Meta.CurrentPlayerID = pID
+						nextFound = true
+						break
+					}
+				}
+				if nextFound { break }
+			}
+			if !nextFound {
 				s.Meta.Status = "active"
 				s.Meta.Phase = "roll"
+				// Find first active player to start the game
+				for i := 0; i < len(order); i++ {
+					pID := order[i]
+					for _, p := range s.Players {
+						if p.ID == pID && !p.IsForfeited {
+							s.Meta.CurrentPlayerID = pID
+							nextFound = true
+							break
+						}
+					}
+					if nextFound { break }
+				}
 			}
 		}
 	} else {
-		nextIdx := (idx + 1) % len(order)
-		s.Meta.CurrentPlayerID = order[nextIdx]
-		s.Meta.Phase = "roll"
+		// Find next player who hasn't forfeited
+		nextFound := false
+		for i := 1; i < len(order); i++ {
+			nextIdx := (idx + i) % len(order)
+			potentialNext := order[nextIdx]
+			for _, p := range s.Players {
+				if p.ID == potentialNext && !p.IsForfeited {
+					s.Meta.CurrentPlayerID = potentialNext
+					s.Meta.Phase = "roll"
+					nextFound = true
+					break
+				}
+			}
+			if nextFound {
+				break
+			}
+		}
+		if !nextFound {
+			s.Meta.Status = "finished"
+		}
+	}
+
+	// Double check if game should end because of too many forfeits
+	activeCount := 0
+	for _, p := range s.Players {
+		if !p.IsForfeited {
+			activeCount++
+		}
+	}
+	if activeCount < 1 { // Should not happen but safety first
+		s.Meta.Status = "finished"
+	} else if activeCount == 1 && s.Meta.Status == "active" {
+		// Only one player left, they win
+		s.Meta.Status = "finished"
 	}
 	s.Meta.LastActionTimestamp = time.Now().Unix()
 }
@@ -720,29 +810,96 @@ func (s *GameState) Roll(forced int, topo *Topology) {
 
 func (s *GameState) Move(playerID, moveType, target string, topo *Topology) error {
 	// Rule Enforcement
-	if moveType != "cheat_resources" && moveType != "trade_bank" && moveType != "trade_port" && moveType != "buy_dev_card" && moveType != "play_dev_card" && moveType != "discard" && moveType != "move_robber" && moveType != "steal_resource" {
+	if moveType != "cheat_resources" && moveType != "trade_bank" && moveType != "trade_port" && moveType != "buy_dev_card" && moveType != "play_dev_card" && moveType != "discard" && moveType != "move_robber" && moveType != "steal_resource" && moveType != "forfeit" && moveType != "end_game" {
 		if err := s.validateMoveLocal(playerID, moveType, target, topo); err != nil {
 			return err
 		}
 	}
 
 	// Apply Move
+	var err error
 	switch moveType {
+	case "forfeit":
+		// target can be "bot" (bot takes over) or "return" (resources back to bank)
+		for i, p := range s.Players {
+			if p.ID == playerID {
+				s.Players[i].IsForfeited = true
+				if target == "bot" {
+					s.Players[i].Type = "bot"
+					s.Players[i].IsForfeited = false // It's a bot now, not really forfeited from game's perspective
+				} else if target == "return" {
+					// Clear resources
+					for res := range s.Players[i].Resources {
+						s.Players[i].Resources[res] = 0
+					}
+				}
+				break
+			}
+		}
+		if s.Meta.CurrentPlayerID == playerID {
+			s.EndTurn()
+		}
+		return nil
+	case "end_game":
+		if playerID == s.Meta.HostID {
+			s.Meta.Status = "finished"
+		} else {
+			return fmt.Errorf("only host can end the game")
+		}
 	case "build_settlement":
 		s.Board.Vertices[target] = VertexState{OwnerID: playerID, Type: "settlement"}
+		if s.Meta.Status != "setup" || s.Meta.Phase == "action" {
+			for i, p := range s.Players {
+				if p.ID == playerID {
+					for res, amount := range BuildCosts["settlement"] {
+						s.Players[i].Resources[res] -= amount
+					}
+					break
+				}
+			}
+		}
 		s.RecalculateSpecialVP(topo)
+		s.RecalculateVP(playerID)
 	case "build_city":
 		s.Board.Vertices[target] = VertexState{OwnerID: playerID, Type: "city"}
+		if s.Meta.Status != "setup" || s.Meta.Phase == "action" {
+			for i, p := range s.Players {
+				if p.ID == playerID {
+					for res, amount := range BuildCosts["city"] {
+						s.Players[i].Resources[res] -= amount
+					}
+					break
+				}
+			}
+		}
 		s.RecalculateVP(playerID)
 	case "build_road":
 		s.Board.Edges[target] = EdgeState{OwnerID: playerID}
+		if s.Meta.Status != "setup" || s.Meta.Phase == "action" {
+			for i, p := range s.Players {
+				if p.ID == playerID {
+					for res, amount := range BuildCosts["road"] {
+						s.Players[i].Resources[res] -= amount
+					}
+					break
+				}
+			}
+		}
 		s.RecalculateSpecialVP(topo)
+		if s.Meta.Status == "setup" {
+			roads, settlements, _ := s.GetPieceCounts(playerID)
+			// setup_1 ends after 1 settlement and 2 roads (total 2 roads)
+			// setup_2 ends after 2 settlements and 4 roads (total 4 roads)
+			if (s.Meta.Phase == "setup_1" && settlements == 1 && roads == 2) || (s.Meta.Phase == "setup_2" && settlements == 2 && roads == 4) {
+				s.EndTurn()
+			}
+		}
 	case "discard":
-		return s.Discard(playerID, target)
+		err = s.Discard(playerID, target)
 	case "move_robber":
-		return s.MoveRobber(playerID, target, topo)
+		err = s.MoveRobber(playerID, target, topo)
 	case "steal_resource":
-		return s.StealResource(playerID, target)
+		err = s.StealResource(playerID, target)
 	case "cheat_resources":
 		for i, p := range s.Players {
 			if p.ID == playerID {
@@ -760,7 +917,7 @@ func (s *GameState) Move(playerID, moveType, target string, topo *Topology) erro
 			}
 		}
 	case "buy_dev_card":
-		return s.BuyDevCard(playerID)
+		err = s.BuyDevCard(playerID)
 	case "play_dev_card":
 		// target: card_type:extra_data
 		parts := strings.Split(target, ":")
@@ -769,21 +926,21 @@ func (s *GameState) Move(playerID, moveType, target string, topo *Topology) erro
 		if len(parts) > 1 {
 			extra = parts[1]
 		}
-		return s.PlayDevCard(playerID, card, extra, topo)
+		err = s.PlayDevCard(playerID, card, extra, topo)
 	case "trade_bank":
 		// target: give:get
 		parts := strings.Split(target, ":")
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid trade data")
 		}
-		return s.TradeBank(playerID, parts[0], parts[1])
+		err = s.TradeBank(playerID, parts[0], parts[1])
 	case "trade_port":
 		// target: give:get
 		parts := strings.Split(target, ":")
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid trade data")
 		}
-		return s.TradePort(playerID, parts[0], parts[1], topo)
+		err = s.TradePort(playerID, parts[0], parts[1], topo)
 	case "submit_trade_offer":
 		// target: give:get:countGive:countGet
 		parts := strings.Split(target, ":")
@@ -804,9 +961,9 @@ func (s *GameState) Move(playerID, moveType, target string, topo *Topology) erro
 			GetAmount:    countGet,
 		}
 		s.Meta.PendingOffers = append(s.Meta.PendingOffers, offer)
-		return nil
 	case "accept_trade_offer":
 		// target: offer_id
+		found := false
 		for idx, offer := range s.Meta.PendingOffers {
 			if offer.ID == target {
 				// FromPlayer gives GiveResource, ActivePlayer gives GetResource
@@ -838,19 +995,30 @@ func (s *GameState) Move(playerID, moveType, target string, topo *Topology) erro
 
 				// Remove offer
 				s.Meta.PendingOffers = append(s.Meta.PendingOffers[:idx], s.Meta.PendingOffers[idx+1:]...)
-				return nil
+				found = true
+				break
 			}
 		}
-		return fmt.Errorf("offer not found")
+		if !found {
+			return fmt.Errorf("offer not found")
+		}
 	case "reject_trade_offer":
 		// target: offer_id
+		found := false
 		for idx, offer := range s.Meta.PendingOffers {
 			if offer.ID == target {
 				s.Meta.PendingOffers = append(s.Meta.PendingOffers[:idx], s.Meta.PendingOffers[idx+1:]...)
-				return nil
+				found = true
+				break
 			}
 		}
-		return fmt.Errorf("offer not found")
+		if !found {
+			return fmt.Errorf("offer not found")
+		}
+	}
+
+	if err != nil {
+		return err
 	}
 
 	s.Log = append(s.Log, LogEntry{
@@ -1157,8 +1325,10 @@ func (s GameState) DeepCopy() GameState {
 			MaxSkips:            s.Meta.MaxSkips,
 			TurnOrder:           append([]string(nil), s.Meta.TurnOrder...),
 			CurrentPlayerID:     s.Meta.CurrentPlayerID,
+			HostID:              s.Meta.HostID,
 			Phase:               s.Meta.Phase,
 			DevCardDeck:         append([]string(nil), s.Meta.DevCardDeck...),
+			PendingOffers:       append([]TradeOffer(nil), s.Meta.PendingOffers...),
 			DiscardingPlayers:   append([]string(nil), s.Meta.DiscardingPlayers...),
 			LargestArmyPlayer:   s.Meta.LargestArmyPlayer,
 			LargestArmyCount:    s.Meta.LargestArmyCount,
@@ -1287,299 +1457,475 @@ func (s *GameState) Replay(topo *Topology) []GameState {
 	return history
 }
 
+func (s *GameState) HandleBotTurn(topo *Topology) {
+	if s.Meta.Status == "invitation" {
+		// If 3-4 players and ALL are bots, auto-begin
+		if len(s.Players) >= 3 {
+			allBots := true
+			for _, p := range s.Players {
+				if p.Type != "bot" {
+					allBots = false
+					break
+				}
+			}
+			if allBots {
+				s.Begin()
+				return
+			}
+		}
+		return
+	}
+
+	if s.Meta.Status == "finished" {
+		return
+	}
+
+	pid := s.Meta.CurrentPlayerID
+	var p Player
+	for _, pl := range s.Players {
+		if pl.ID == pid {
+			p = pl
+			break
+		}
+	}
+
+	if p.IsForfeited {
+		s.EndTurn()
+		return
+	}
+
+	// 1. Handle Dice Roll
+	if s.Meta.Phase == "roll" {
+		if pid != s.Meta.CurrentPlayerID {
+			return
+		}
+		if p.Type != "bot" {
+			return
+		}
+		// Before rolling, bot might want to play a Knight if the robber is on its hex
+		if p.DevCards["knight"] > 0 {
+			shouldPlayKnight := false
+			for _, h := range s.Board.Hexes {
+				if h.Robber {
+					verts := strings.Split(h.Vertices, ",")
+					for _, vID := range verts {
+						if v, ok := s.Board.Vertices[vID]; ok && v.OwnerID == pid {
+							shouldPlayKnight = true
+							break
+						}
+					}
+				}
+				if shouldPlayKnight {
+					break
+				}
+			}
+			if shouldPlayKnight {
+				s.Move(pid, "play_dev_card", "knight", topo)
+			}
+		}
+		s.Roll(0, topo)
+		return
+	}
+
+	// 2. Handle Robber Phases (can happen for any player, not just active)
+	// We handle discarding for ALL bots here if it's that phase
+	if s.Meta.Phase == "robber_discard" {
+		dpCopy := make([]string, len(s.Meta.DiscardingPlayers))
+		copy(dpCopy, s.Meta.DiscardingPlayers)
+		for _, dpID := range dpCopy {
+			var dp Player
+			isBot := false
+			for _, pl := range s.Players {
+				if pl.ID == dpID {
+					dp = pl
+					isBot = pl.Type == "bot"
+					break
+				}
+			}
+			if !isBot {
+				continue
+			}
+
+			total := 0
+			for _, c := range dp.Resources {
+				total += c
+			}
+			toDiscard := total / 2
+			discardStr := []string{}
+			resOrder := []string{"sheep", "wood", "brick", "wheat", "ore"}
+			for _, res := range resOrder {
+				count := dp.Resources[res]
+				if toDiscard <= 0 {
+					break
+				}
+				num := count
+				if num > toDiscard {
+					num = toDiscard
+				}
+				if num > 0 {
+					discardStr = append(discardStr, fmt.Sprintf("%s:%d", res, num))
+					toDiscard -= num
+				}
+			}
+			if len(discardStr) > 0 {
+				s.Move(dpID, "discard", strings.Join(discardStr, ","), topo)
+			}
+		}
+		return
+	}
+
+	if s.Meta.Phase == "robber_move" {
+		// Only current player moves robber
+		if pid != s.Meta.CurrentPlayerID {
+			return
+		}
+		if p.Type != "bot" {
+			return
+		}
+		bestHex := ""
+		maxValue := -1
+		for hID, h := range s.Board.Hexes {
+			if h.Robber || h.Resource == "desert" {
+				continue
+			}
+			ours := false
+			enemyValue := 0
+			verts := strings.Split(h.Vertices, ",")
+			for _, vID := range verts {
+				if v, ok := s.Board.Vertices[vID]; ok && v.OwnerID != "" && v.OwnerID != "null" {
+					if v.OwnerID == pid {
+						ours = true
+						break
+					}
+					val := 1
+					if v.Type == "city" {
+						val = 2
+					}
+					enemyValue += val
+				}
+			}
+			if ours {
+				continue
+			}
+			prob := 6 - int(math.Abs(float64(h.Token-7)))
+			if enemyValue*prob > maxValue {
+				maxValue = enemyValue * prob
+				bestHex = hID
+			}
+		}
+		if bestHex == "" {
+			for hID := range s.Board.Hexes {
+				if !s.Board.Hexes[hID].Robber {
+					bestHex = hID
+					break
+				}
+			}
+		}
+		s.Move(pid, "move_robber", bestHex, topo)
+		return
+	}
+
+	if s.Meta.Phase == "robber_steal" {
+		// Only current player steals
+		if pid != s.Meta.CurrentPlayerID {
+			return
+		}
+		if p.Type != "bot" {
+			return
+		}
+		var robberHex HexState
+		for _, h := range s.Board.Hexes {
+			if h.Robber {
+				robberHex = h
+				break
+			}
+		}
+		victimID := ""
+		verts := strings.Split(robberHex.Vertices, ",")
+		for _, vID := range verts {
+			if v, ok := s.Board.Vertices[vID]; ok && v.OwnerID != "" && v.OwnerID != "null" && v.OwnerID != pid {
+				victimID = v.OwnerID
+				break
+			}
+		}
+		if victimID != "" {
+			s.Move(pid, "steal_resource", victimID, topo)
+		} else {
+			s.Meta.Phase = "action"
+		}
+		return
+	}
+
+	// 3. Handle Setup Phases
+	if s.Meta.Phase == "setup_1" || s.Meta.Phase == "setup_2" {
+		if p.Type != "bot" {
+			return
+		}
+
+		roads, settlements, _ := s.GetPieceCounts(pid)
+		expectedSettlements := 1
+		if s.Meta.Phase == "setup_2" {
+			expectedSettlements = 2
+		}
+		expectedRoads := expectedSettlements * 2
+
+		if settlements < expectedSettlements {
+			// Smart Setup: Evaluate vertex probabilities
+			bestVertex := ""
+			maxScore := -1
+			for vID := range topo.Vertices {
+				if err := s.validateMoveLocal(pid, "build_settlement", vID, topo); err == nil {
+					score := 0
+					for _, h := range s.Board.Hexes {
+						if strings.Contains(h.Vertices, vID) && h.Resource != "desert" {
+							prob := 6 - int(math.Abs(float64(h.Token-7)))
+							score += prob
+						}
+					}
+					if score > maxScore {
+						maxScore = score
+						bestVertex = vID
+					}
+				}
+			}
+
+			if bestVertex != "" {
+				s.Move(pid, "build_settlement", bestVertex, topo)
+				if s.Meta.Phase == "setup_2" {
+					// Give initial resources
+					for _, h := range s.Board.Hexes {
+						if strings.Contains(h.Vertices, bestVertex) && h.Resource != "desert" {
+							if s.GetTotalResources(h.Resource) < MaxBank {
+								for i, pl := range s.Players {
+									if pl.ID == pid {
+										s.Players[i].Resources[h.Resource]++
+										break
+									}
+								}
+							}
+						}
+					}
+				}
+				// Do NOT return here, continue to build roads for this turn
+			}
+		}
+
+		// Keep building roads until we hit the expected count for this phase
+		for {
+			roads, _, _ = s.GetPieceCounts(pid)
+			if roads >= expectedRoads {
+				break
+			}
+			
+			builtRoad := false
+			for eID := range topo.Edges {
+				if err := s.validateMoveLocal(pid, "build_road", eID, topo); err == nil {
+					s.Move(pid, "build_road", eID, topo)
+					builtRoad = true
+					break
+				}
+			}
+			if !builtRoad {
+				break // Stuck
+			}
+		}
+
+		return
+	}
+
+	// 4. Handle Action Phase
+	if s.Meta.Phase == "action" {
+		if p.Type != "bot" {
+			return
+		}
+
+		// A. Trading Logic
+		// Evaluate pending offers
+		for _, offer := range s.Meta.PendingOffers {
+			if p.Resources[offer.GetResource] >= offer.GetAmount {
+				// Accept any trade that gives us a resource we have 0 of, if we have >= 2 of what they want
+				if p.Resources[offer.GiveResource] == 0 && p.Resources[offer.GetResource] >= 2 {
+					s.Move(pid, "accept_trade_offer", offer.ID, topo)
+					return // Action taken
+				}
+				// Also accept if we just have a lot of the requested resource
+				if p.Resources[offer.GetResource] >= 4 {
+					s.Move(pid, "accept_trade_offer", offer.ID, topo)
+					return // Action taken
+				}
+			}
+		}
+
+		// Propose trade if we have excess and need something
+		resources := []string{"wood", "brick", "sheep", "wheat", "ore"}
+		var excessRes, neededRes string
+		for _, res := range resources {
+			if p.Resources[res] >= 3 { // More aggressive: 3+ is excess
+				excessRes = res
+			}
+			if p.Resources[res] == 0 {
+				neededRes = res
+			}
+		}
+		if excessRes != "" && neededRes != "" {
+			// Check if we already proposed a trade recently (simple check: only 1 pending offer from us)
+			alreadyProposed := false
+			for _, offer := range s.Meta.PendingOffers {
+				if offer.FromPlayerID == pid {
+					alreadyProposed = true
+					break
+				}
+			}
+			if !alreadyProposed {
+				s.Move(pid, "submit_trade_offer", fmt.Sprintf("%s:%s:1:1", excessRes, neededRes), topo)
+				// Don't return, can still build
+			}
+		}
+
+		// B. Building Logic
+		builtSomething := false
+		
+		// Priority 1: Build City
+		for vID, v := range s.Board.Vertices {
+			if v.OwnerID == pid && v.Type == "settlement" {
+				if err := s.validateMoveLocal(pid, "build_city", vID, topo); err == nil {
+					if err := s.Move(pid, "build_city", vID, topo); err == nil {
+						builtSomething = true
+						break
+					}
+				}
+			}
+		}
+		
+		// Priority 2: Build Settlement
+		if !builtSomething {
+			for vID := range topo.Vertices {
+				if err := s.validateMoveLocal(pid, "build_settlement", vID, topo); err == nil {
+					if err := s.Move(pid, "build_settlement", vID, topo); err == nil {
+						builtSomething = true
+						break
+					}
+				}
+			}
+		}
+		
+		// Priority 3: Buy Dev Card
+		if !builtSomething {
+			if err := s.validateMoveLocal(pid, "buy_dev_card", "", topo); err == nil {
+				if err := s.Move(pid, "buy_dev_card", "", topo); err == nil {
+					builtSomething = true
+				}
+			}
+		}
+
+		// Priority 4: Build Road
+		if !builtSomething {
+			for eID := range topo.Edges {
+				if err := s.validateMoveLocal(pid, "build_road", eID, topo); err == nil {
+					if err := s.Move(pid, "build_road", eID, topo); err == nil {
+						builtSomething = true
+						break
+					}
+				}
+			}
+		}
+
+		if builtSomething {
+			return // Take one action at a time in live mode for better visualization
+		}
+
+		// D. Bank/Port Trade as last resort
+		// We want to trade ANY excess resource for ANY needed resource.
+		// Definition of excess: > 0 if we have enough of it to perform a trade.
+		// Definition of needed: anything required for our NEXT priority.
+		
+		needed := []string{}
+		// Settlement
+		for r, amt := range BuildCosts["settlement"] {
+			if p.Resources[r] < amt { needed = append(needed, r) }
+		}
+		if len(needed) == 0 {
+			// City
+			for r, amt := range BuildCosts["city"] {
+				if p.Resources[r] < amt { needed = append(needed, r) }
+			}
+		}
+		if len(needed) == 0 {
+			// Dev Card
+			for r, amt := range BuildCosts["dev_card"] {
+				if p.Resources[r] < amt { needed = append(needed, r) }
+			}
+		}
+
+		if len(needed) > 0 {
+			targetRes := needed[0]
+			for _, res := range resources {
+				if res == targetRes { continue }
+				
+				// Try Port Trade (2:1 or 3:1)
+				if err := s.TradePort(pid, res, targetRes, topo); err == nil {
+					return
+				}
+				// Try Bank Trade (4:1)
+				if err := s.TradeBank(pid, res, targetRes); err == nil {
+					return
+				}
+			}
+		}
+
+		// Absolute last resort trade if we have 4+ of anything
+		for _, res := range resources {
+			if p.Resources[res] >= 4 {
+				for _, other := range resources {
+					if res == other { continue }
+					if err := s.TradeBank(pid, res, other); err == nil {
+						return
+					}
+				}
+			}
+		}
+
+		s.EndTurn()
+	}
+}
+
 func (s *GameState) Simulate(topo *Topology) []GameState {
 	var history []GameState
 	
 	s.Init(topo)
 	history = append(history, s.DeepCopy())
 
-	s.Join("bot1", "bot")
-	s.Join("bot2", "bot")
-	s.Join("bot3", "bot")
+	s.Join("bot-1", "bot")
+	s.Join("bot-2", "bot")
+	s.Join("bot-3", "bot")
 	history = append(history, s.DeepCopy())
 
 	s.Begin()
 	history = append(history, s.DeepCopy())
 
-	maxTurns := 500
+	maxTurns := 1000 // Increased for a full game simulation
 	turnCount := 0
 
 	for s.Meta.Status != "finished" && turnCount < maxTurns {
-		pid := s.Meta.CurrentPlayerID
-		var p Player
-		for _, pl := range s.Players {
-			if pl.ID == pid {
-				p = pl
-				break
-			}
-		}
-
-		if s.Meta.Phase == "roll" {
-			s.Roll(0, topo)
+		// During robber_discard, multiple players might need to discard.
+		// HandleBotTurn only handles one player action per call in live mode.
+		// In Simulate, we should keep calling it until the phase changes if it's robber_discard.
+		for s.Meta.Phase == "robber_discard" && turnCount < maxTurns {
+			s.HandleBotTurn(topo)
 			history = append(history, s.DeepCopy())
+			turnCount++
 		}
-
-		// Handle Robber Phases
-		if s.Meta.Phase == "robber_discard" {
-			dpCopy := make([]string, len(s.Meta.DiscardingPlayers))
-			copy(dpCopy, s.Meta.DiscardingPlayers)
-			for _, dpID := range dpCopy {
-				var p Player
-				for _, pl := range s.Players {
-					if pl.ID == dpID {
-						p = pl
-						break
-					}
-				}
-				total := 0
-				for _, c := range p.Resources {
-					total += c
-				}
-				toDiscard := total / 2
-				discardStr := []string{}
-				resOrder := []string{"sheep", "wood", "brick", "wheat", "ore"} // Discard less valuable first
-				for _, res := range resOrder {
-					count := p.Resources[res]
-					if toDiscard <= 0 {
-						break
-					}
-					num := count
-					if num > toDiscard {
-						num = toDiscard
-					}
-					if num > 0 {
-						discardStr = append(discardStr, fmt.Sprintf("%s:%d", res, num))
-						toDiscard -= num
-					}
-				}
-				if len(discardStr) > 0 {
-					s.Move(dpID, "discard", strings.Join(discardStr, ","), topo)
-					history = append(history, s.DeepCopy())
-				}
-			}
-		}
-
-		if s.Meta.Phase == "robber_move" {
-			bestHex := ""
-			maxValue := -1
-			for hID, h := range s.Board.Hexes {
-				if h.Robber || h.Resource == "desert" {
-					continue
-				}
-				ours := false
-				enemyValue := 0
-				verts := strings.Split(h.Vertices, ",")
-				for _, vID := range verts {
-					if v, ok := s.Board.Vertices[vID]; ok && v.OwnerID != "" && v.OwnerID != "null" {
-						if v.OwnerID == pid {
-							ours = true
-							break
-						}
-						val := 1
-						if v.Type == "city" {
-							val = 2
-						}
-						enemyValue += val
-					}
-				}
-				if ours {
-					continue
-				}
-				// Heuristic: enemy settlements * probability of token
-				prob := 6 - int(math.Abs(float64(h.Token-7)))
-				if enemyValue*prob > maxValue {
-					maxValue = enemyValue * prob
-					bestHex = hID
-				}
-			}
-			if bestHex == "" {
-				for hID := range s.Board.Hexes {
-					if !s.Board.Hexes[hID].Robber {
-						bestHex = hID
-						break
-					}
-				}
-			}
-			s.Move(pid, "move_robber", bestHex, topo)
-			history = append(history, s.DeepCopy())
-		}
-
-		if s.Meta.Phase == "robber_steal" {
-			var robberHex HexState
-			for _, h := range s.Board.Hexes {
-				if h.Robber {
-					robberHex = h
-					break
-				}
-			}
-			victimID := ""
-			verts := strings.Split(robberHex.Vertices, ",")
-			for _, vID := range verts {
-				if v, ok := s.Board.Vertices[vID]; ok && v.OwnerID != "" && v.OwnerID != "null" && v.OwnerID != pid {
-					victimID = v.OwnerID
-					// Prefer stealing from player with most VP
-					break
-				}
-			}
-			if victimID != "" {
-				s.Move(pid, "steal_resource", victimID, topo)
-			} else {
-				s.Meta.Phase = "action"
-			}
-			history = append(history, s.DeepCopy())
-		}
-
-		// AI Logic: Cheat resources to ensure progress for mechanics test (only in action phase)
-		if s.Meta.Phase == "action" {
-			s.Move(pid, "cheat_resources", "", topo)
-		}
-
-		if (s.Meta.Phase == "setup_1" || s.Meta.Phase == "setup_2") && s.Meta.Status != "finished" {
-			// In setup, must build 1 settlement AND 2 roads
-			builtSettlement := false
-			for vID := range topo.Vertices {
-				if err := s.validateMoveLocal(pid, "build_settlement", vID, topo); err == nil {
-					s.Move(pid, "build_settlement", vID, topo)
-					builtSettlement = true
-					// If setup_2, give resources for adjacent hexes
-					if s.Meta.Phase == "setup_2" {
-						for _, h := range s.Board.Hexes {
-							if strings.Contains(h.Vertices, vID) && h.Resource != "desert" {
-								if s.GetTotalResources(h.Resource) < MaxBank {
-									for i, pl := range s.Players {
-										if pl.ID == pid {
-											s.Players[i].Resources[h.Resource]++
-											break
-										}
-									}
-								}
-							}
-						}
-					}
-					break
-				}
-			}
-			if builtSettlement {
-				for i := 0; i < 2; i++ {
-					builtRoad := false
-					for eID := range topo.Edges {
-						if err := s.validateMoveLocal(pid, "build_road", eID, topo); err == nil {
-							s.Move(pid, "build_road", eID, topo)
-							builtRoad = true
-							break
-						}
-					}
-					if !builtRoad {
-						// Not enough space for 2 roads, break
-						break
-					}
-				}
-			}
-			history = append(history, s.DeepCopy())
-		} else if s.Meta.Phase == "action" && s.Meta.Status != "finished" {
-			// Try to play a knight if we have one
-			if p.DevCards["knight"] > 0 {
-				s.Move(pid, "play_dev_card", "knight", topo)
-			}
-			
-			if s.Meta.Status == "finished" {
-				history = append(history, s.DeepCopy())
-			} else {
-				// Try to buy a dev card if we have extra wheat/sheep/ore
-				s.Move(pid, "buy_dev_card", "", topo)
-				
-				if s.Meta.Status == "finished" {
-					history = append(history, s.DeepCopy())
-				} else {
-					// Try to trade if we have too much of one resource
-					for _, res := range []string{"wood", "brick", "sheep", "wheat", "ore"} {
-						if s.Meta.Status == "finished" {
-							break
-						}
-						var player Player
-						found := false
-						for _, pl := range s.Players {
-							if pl.ID == pid {
-								player = pl
-								found = true
-								break
-							}
-						}
-						if found && player.Resources[res] >= 4 {
-							// Trade for something we have 0 of
-							for _, other := range []string{"wood", "brick", "sheep", "wheat", "ore"} {
-								if player.Resources[other] == 0 {
-									s.Move(pid, "trade_bank", res+":"+other, topo)
-									break
-								}
-							}
-						}
-					}
-
-					// Try to build multiple things if possible
-					for i := 0; i < 3; i++ {
-						if s.Meta.Status == "finished" {
-							break
-						}
-						built := false
-						// 1. Try to build settlement
-						for vID := range topo.Vertices {
-							if err := s.validateMoveLocal(pid, "build_settlement", vID, topo); err == nil {
-								s.Move(pid, "build_settlement", vID, topo)
-								history = append(history, s.DeepCopy())
-								built = true
-								break
-							}
-						}
-						if s.Meta.Status == "finished" {
-							break
-						}
-						// 2. Try to build road
-						if !built {
-							for eID := range topo.Edges {
-								if err := s.validateMoveLocal(pid, "build_road", eID, topo); err == nil {
-									s.Move(pid, "build_road", eID, topo)
-									history = append(history, s.DeepCopy())
-									built = true
-									break
-								}
-							}
-						}
-						if s.Meta.Status == "finished" {
-							break
-						}
-						// 3. Try to build city
-						if !built {
-							for vID, v := range s.Board.Vertices {
-								if v.OwnerID == pid && v.Type == "settlement" {
-									if err := s.validateMoveLocal(pid, "build_city", vID, topo); err == nil {
-										s.Move(pid, "build_city", vID, topo)
-										history = append(history, s.DeepCopy())
-										built = true
-										break
-									}
-								}
-							}
-						}
-						if !built {
-							break
-						}
-					}
-				}
-			}
-		}
-
 		if s.Meta.Status == "finished" {
 			break
 		}
-
-		s.EndTurn()
+		s.HandleBotTurn(topo)
 		history = append(history, s.DeepCopy())
 		turnCount++
 	}
 
 	return history
 }
+
 
 func (s *GameState) GetPieceCounts(playerID string) (roads, settlements, cities int) {
 	for _, v := range s.Board.Vertices {
@@ -1635,10 +1981,39 @@ func (s *GameState) GetRollResources(roll int) map[string]map[string]int {
 
 // Add a non-method validation helper for simulation
 func (s *GameState) validateMoveLocal(playerID, moveType, target string, topo *Topology) error {
+	// Turn Enforcement
+	if playerID != s.Meta.CurrentPlayerID {
+		// Allow out-of-turn actions for discard and trade acceptance if necessary.
+		// However, Move only passes current player for most things.
+		if moveType != "discard" && moveType != "accept_trade_offer" && moveType != "reject_trade_offer" {
+			return fmt.Errorf("it is not your turn (current: %s, acting: %s)", s.Meta.CurrentPlayerID, playerID)
+		}
+	}
+
 	roads, settlements, cities := s.GetPieceCounts(playerID)
+
+	var p Player
+	found := false
+	for _, pl := range s.Players {
+		if pl.ID == playerID {
+			p = pl
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("player not found")
+	}
 
 	switch moveType {
 	case "build_settlement":
+		if s.Meta.Status != "setup" || s.Meta.Phase == "action" {
+			for res, amount := range BuildCosts["settlement"] {
+				if p.Resources[res] < amount {
+					return fmt.Errorf("insufficient %s", res)
+				}
+			}
+		}
 		if s.Meta.Phase == "setup_1" && settlements >= 1 {
 			return fmt.Errorf("only 1 settlement allowed in setup 1")
 		}
@@ -1665,7 +2040,7 @@ func (s *GameState) validateMoveLocal(playerID, moveType, target string, topo *T
 			}
 		}
 		// Connectivity
-		if s.Meta.Status != "setup" {
+		if s.Meta.Status != "setup" || s.Meta.Phase == "action" {
 			connected := false
 			for _, eID := range vTopo.AdjacentEdges {
 				if e, ok := s.Board.Edges[eID]; ok && e.OwnerID == playerID {
@@ -1678,6 +2053,13 @@ func (s *GameState) validateMoveLocal(playerID, moveType, target string, topo *T
 			}
 		}
 	case "build_road":
+		if s.Meta.Status != "setup" || s.Meta.Phase == "action" {
+			for res, amount := range BuildCosts["road"] {
+				if p.Resources[res] < amount {
+					return fmt.Errorf("insufficient %s", res)
+				}
+			}
+		}
 		if s.Meta.Phase == "setup_1" && roads >= 2 {
 			return fmt.Errorf("only 2 roads allowed in setup 1")
 		}
@@ -1692,19 +2074,23 @@ func (s *GameState) validateMoveLocal(playerID, moveType, target string, topo *T
 		}
 		eTopo := topo.Edges[target]
 		connected := false
+		// During setup, roads must be connected to our settlements
+		// During action phase, roads can connect to settlements OR other roads
 		for _, vID := range eTopo.AdjacentVertices {
 			if v, ok := s.Board.Vertices[vID]; ok && v.OwnerID == playerID {
 				connected = true
 				break
 			}
-			vTopo := topo.Vertices[vID]
-			for _, adjEID := range vTopo.AdjacentEdges {
-				if adjEID == target {
-					continue
-				}
-				if e, ok := s.Board.Edges[adjEID]; ok && e.OwnerID == playerID {
-					connected = true
-					break
+			if s.Meta.Status != "setup" || s.Meta.Phase == "action" {
+				vTopo := topo.Vertices[vID]
+				for _, adjEID := range vTopo.AdjacentEdges {
+					if adjEID == target {
+						continue
+					}
+					if e, ok := s.Board.Edges[adjEID]; ok && e.OwnerID == playerID {
+						connected = true
+						break
+					}
 				}
 			}
 			if connected {
@@ -1715,6 +2101,13 @@ func (s *GameState) validateMoveLocal(playerID, moveType, target string, topo *T
 			return fmt.Errorf("connectivity")
 		}
 	case "build_city":
+		if s.Meta.Status != "setup" || s.Meta.Phase == "action" {
+			for res, amount := range BuildCosts["city"] {
+				if p.Resources[res] < amount {
+					return fmt.Errorf("insufficient %s", res)
+				}
+			}
+		}
 		if cities >= MaxCities {
 			return fmt.Errorf("no more cities available")
 		}
@@ -1788,6 +2181,9 @@ type model struct {
 	tickCount    int
 	victimIdx    int
 	discardRes   map[string]int
+	botCooldown  int
+	isForfeiting bool
+	forfeitPendingID string
 }
 
 type simulationMsg []GameState
@@ -1808,32 +2204,48 @@ func tick() tea.Cmd {
 
 func initialModel() model {
 	boardData, err := os.ReadFile("board.txt")
+	var boardStr string
 	if err != nil {
-		panic(err)
-	}
-
-	gameData, err := os.ReadFile("game.yaml")
-	if err != nil {
-		panic(err)
+		boardStr = embeddedBoard
+	} else {
+		boardStr = string(boardData)
 	}
 
 	var state GameState
-	if err := yaml.Unmarshal(gameData, &state); err != nil {
-		panic(err)
+	gameData, err := os.ReadFile("game.yaml")
+	if err != nil {
+		// Initialize new game if no state exists
+		var topo Topology
+		yaml.Unmarshal(embeddedTopology, &topo)
+		state.Init(&topo)
+		// Auto-join 3 bots for a standalone game if nothing exists
+		state.Join("bot-1", "bot")
+		state.Join("bot-2", "bot")
+		state.Join("bot-3", "bot")
+		// Save initial state so we have a file
+		out, _ := yaml.Marshal(state)
+		os.WriteFile("game.yaml", out, 0644)
+	} else {
+		if err := yaml.Unmarshal(gameData, &state); err != nil {
+			// fallback if yaml is corrupt
+			var topo Topology
+			yaml.Unmarshal(embeddedTopology, &topo)
+			state.Init(&topo)
+		}
 	}
 
 	topologyData, err := os.ReadFile("topology.yaml")
-	if err != nil {
-		panic(err)
-	}
-
 	var topology Topology
-	if err := yaml.Unmarshal(topologyData, &topology); err != nil {
-		panic(err)
+	if err != nil {
+		yaml.Unmarshal(embeddedTopology, &topology)
+	} else {
+		if err := yaml.Unmarshal(topologyData, &topology); err != nil {
+			yaml.Unmarshal(embeddedTopology, &topology)
+		}
 	}
 
 	m := model{
-		board:    string(boardData),
+		board:    boardStr,
 		state:    state,
 		topology: topology,
 		width:      140,
@@ -1959,7 +2371,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		m.tickCount++
-		if m.tickCount % 100 == 0 {
+		if m.tickCount%100 == 0 {
 			m.fetchChatComments()
 		}
 		if m.isPlaying && m.historyIdx < len(m.history)-1 {
@@ -1968,6 +2380,69 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.relinkPorts()
 			return m, tick()
 		}
+
+		// Bot Logic Integration
+		if !m.isPlaying && len(m.history) == 0 && (m.state.Meta.Status == "active" || m.state.Meta.Status == "setup" || m.state.Meta.Status == "invitation") {
+			if m.botCooldown > 0 {
+				m.botCooldown--
+			} else {
+				// Check if current player is a bot
+				isBotTurn := false
+				for _, p := range m.state.Players {
+					if p.ID == m.state.Meta.CurrentPlayerID && p.Type == "bot" {
+						isBotTurn = true
+						break
+					}
+				}
+
+				// Check if ALL are bots in invitation
+				onlyBotsJoined := false
+				if m.state.Meta.Status == "invitation" && len(m.state.Players) >= 3 {
+					onlyBotsJoined = true
+					for _, p := range m.state.Players {
+						if p.Type != "bot" {
+							onlyBotsJoined = false
+							break
+						}
+					}
+				}
+
+				// Also check if ANY bot needs to discard
+				botNeedsToDiscard := false
+				if m.state.Meta.Phase == "robber_discard" {
+					for _, dpID := range m.state.Meta.DiscardingPlayers {
+						for _, p := range m.state.Players {
+							if p.ID == dpID && p.Type == "bot" {
+								botNeedsToDiscard = true
+								break
+							}
+						}
+						if botNeedsToDiscard {
+							break
+						}
+					}
+				}
+
+				if isBotTurn || botNeedsToDiscard || onlyBotsJoined {
+					m.state.HandleBotTurn(&m.topology)
+					// If all players are bots, use a shorter cooldown to speed up the game
+					allBots := true
+					for _, p := range m.state.Players {
+						if p.Type != "bot" {
+							allBots = false
+							break
+						}
+					}
+					if allBots {
+						m.botCooldown = 2 // Very short delay for bot-only games
+					} else {
+						m.botCooldown = 20 // 2 seconds delay if humans are involved
+					}
+					m.saveState()
+				}
+			}
+		}
+
 		return m, tick() // Always keep ticking
 
 	case tea.WindowSizeMsg:
@@ -2056,9 +2531,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
-		case "i":
+		case "i", "I":
+			m.history = nil
+			m.historyIdx = 0
+			m.isPlaying = false
 			m.runDM("init")
+		case "P":
+			if m.state.Meta.Status == "finished" {
+				m.history = m.state.Replay(&m.topology)
+				m.historyIdx = 0
+				m.isPlaying = true
+				m.message = "Playing back game history."
+			}
 		case "p":
+			if m.viewMode == 1 && m.tradeStep == 2 {
+				activePID := m.state.Meta.CurrentPlayerID
+				m.runDM("move", activePID, "trade_port", m.tradeGive+":"+m.tradeGet)
+				m.tradeStep = 0
+				return m, nil
+			}
 			if m.isSimulating {
 				return m, nil
 			}
@@ -2093,11 +2584,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else {
 						m.tradeCursor = (m.tradeCursor + 1) % 5
 					}
-				} else if len(m.state.Meta.PendingOffers) > 0 {
-					if msg.String() == "up" {
-						m.offerIdx = (m.offerIdx - 1 + len(m.state.Meta.PendingOffers)) % len(m.state.Meta.PendingOffers)
-					} else {
-						m.offerIdx = (m.offerIdx + 1) % len(m.state.Meta.PendingOffers)
+				} else {
+					offers := m.getOffersToShow()
+					if len(offers) > 0 {
+						if msg.String() == "up" {
+							m.offerIdx = (m.offerIdx - 1 + len(offers)) % len(offers)
+						} else {
+							m.offerIdx = (m.offerIdx + 1) % len(offers)
+						}
 					}
 				}
 			} else {
@@ -2234,18 +2728,57 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.runDM("move", m.state.Meta.CurrentPlayerID, "cheat_resources")
 		case "4", "5":
 			// No-op or future pages
-		case "B", "P", "S", "A", "R": // Trading actions
+		case "f":
+			if m.state.Meta.Status == "active" || m.state.Meta.Status == "setup" {
+				pID := m.state.Meta.CurrentPlayerID
+				if m.viewerIdx != -1 {
+					pID = m.state.Players[m.viewerIdx].ID
+				}
+				// Humans can only forfeit for themselves
+				// Host can trigger it for bots or guests if needed (but UI usually handles it)
+				m.isForfeiting = true
+				m.forfeitPendingID = pID
+				m.message = fmt.Sprintf("Player %s is forfeiting. Host (%s) must decide: [B] Bot, [R] Return resources, or [E] End game.", pID, m.state.Meta.HostID)
+			}
+		case "ctrl+e":
+			if m.state.Meta.Status == "active" || m.state.Meta.Status == "setup" {
+				viewerPID := m.state.Meta.CurrentPlayerID
+				if m.viewerIdx != -1 {
+					viewerPID = m.state.Players[m.viewerIdx].ID
+				}
+				if viewerPID == m.state.Meta.HostID {
+					m.runDM("move", viewerPID, "end_game", "")
+				} else {
+					m.message = "Only host can end the game."
+				}
+			}
+		case "B", "S", "A", "R", "E": // Trading actions / Forfeit decisions
+			if m.isForfeiting {
+				viewerPID := m.state.Meta.CurrentPlayerID
+				if m.viewerIdx != -1 {
+					viewerPID = m.state.Players[m.viewerIdx].ID
+				}
+				if viewerPID == m.state.Meta.HostID {
+					switch msg.String() {
+					case "B":
+						m.runDM("move", m.forfeitPendingID, "forfeit", "bot")
+						m.isForfeiting = false
+					case "R":
+						m.runDM("move", m.forfeitPendingID, "forfeit", "return")
+						m.isForfeiting = false
+					case "E":
+						m.runDM("move", viewerPID, "end_game", "")
+						m.isForfeiting = false
+					}
+				}
+				return m, nil
+			}
 			if m.viewMode == 1 {
 				activePID := m.state.Meta.CurrentPlayerID
 				switch msg.String() {
 				case "B":
 					if m.tradeStep == 2 {
 						m.runDM("move", activePID, "trade_bank", m.tradeGive+":"+m.tradeGet)
-						m.tradeStep = 0
-					}
-				case "P":
-					if m.tradeStep == 2 {
-						m.runDM("move", activePID, "trade_port", m.tradeGive+":"+m.tradeGet)
 						m.tradeStep = 0
 					}
 				case "S":
@@ -2260,15 +2793,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case "A":
 					// Accept Offer (Active player)
-					if len(m.state.Meta.PendingOffers) > 0 {
-						offer := m.state.Meta.PendingOffers[m.offerIdx]
+					offers := m.getOffersToShow()
+					if len(offers) > 0 && activePID == m.state.Meta.CurrentPlayerID && m.state.Meta.Phase == "action" {
+						offer := offers[m.offerIdx]
 						m.runDM("move", activePID, "accept_trade_offer", offer.ID)
 						m.offerIdx = 0
 					}
 				case "R":
 					// Reject Offer (Active player)
-					if len(m.state.Meta.PendingOffers) > 0 {
-						offer := m.state.Meta.PendingOffers[m.offerIdx]
+					offers := m.getOffersToShow()
+					if len(offers) > 0 && activePID == m.state.Meta.CurrentPlayerID && m.state.Meta.Phase == "action" {
+						offer := offers[m.offerIdx]
 						m.runDM("move", activePID, "reject_trade_offer", offer.ID)
 						m.offerIdx = 0
 					}
@@ -2527,7 +3062,22 @@ func (m *model) validateMove(action string) error {
 	return m.state.validateMoveLocal(m.state.Meta.CurrentPlayerID, action, m.selectedID, &m.topology)
 }
 
-func (m *model) getVictims() []string {
+func (m model) getOffersToShow() []TradeOffer {
+	pID := m.state.Meta.CurrentPlayerID
+	if m.viewerIdx != -1 && m.viewerIdx < len(m.state.Players) {
+		pID = m.state.Players[m.viewerIdx].ID
+	}
+	offersToShow := []TradeOffer{}
+	for _, offer := range m.state.Meta.PendingOffers {
+		if m.state.Meta.Phase == "action" || offer.FromPlayerID == pID {
+			offersToShow = append(offersToShow, offer)
+		}
+	}
+	return offersToShow
+}
+
+func (m model) getVictims() []string {
+
 	var hID string
 	for id, h := range m.state.Board.Hexes {
 		if h.Robber {
@@ -3222,7 +3772,7 @@ func (m model) renderTradeView() string {
 				}
 			}
 			if hasPort {
-				sb.WriteString(" [P] Port (2:1 or 3:1)\n")
+				sb.WriteString(" [p] Port (2:1 or 3:1)\n")
 			}
 		} else {
 			sb.WriteString(" [S] Submit Offer to Active Player (1:1)\n")
@@ -3230,26 +3780,30 @@ func (m model) renderTradeView() string {
 	}
 
 	// Pending Offers Section
-	if len(m.state.Meta.PendingOffers) > 0 {
+	offersToShow := m.getOffersToShow()
+	if len(offersToShow) > 0 {
 		sb.WriteString("\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("PENDING OFFERS") + "\n")
-		for i, offer := range m.state.Meta.PendingOffers {
+		for i, offer := range offersToShow {
 			cursor := "  "
 			style := lipgloss.NewStyle()
 			if i == m.offerIdx {
 				cursor = "> "
 				style = style.Bold(true).Background(lipgloss.Color("8"))
 			}
-			line := fmt.Sprintf("%s %s offers %d %s for %d %s", 
+			line := fmt.Sprintf("%s %s offers %d %s for %d %s",
 				cursor, offer.FromPlayerID, offer.GiveAmount, offer.GiveResource, offer.GetAmount, offer.GetResource)
 			sb.WriteString(style.Render(line) + "\n")
 		}
-		if pID == m.state.Meta.CurrentPlayerID {
+		pID := m.state.Meta.CurrentPlayerID
+		if m.viewerIdx != -1 && m.viewerIdx < len(m.state.Players) {
+			pID = m.state.Players[m.viewerIdx].ID
+		}
+		if pID == m.state.Meta.CurrentPlayerID && m.state.Meta.Phase == "action" {
 			sb.WriteString("\n [A] Accept Selected  [R] Reject Selected\n")
 		}
 	} else {
 		sb.WriteString("\nNo pending offers.\n")
 	}
-
 	sb.WriteString("\n [T] Reset Trade\n")
 	sb.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Press '1' to return to Board View."))
 
@@ -3350,7 +3904,23 @@ func (m model) renderChatView() string {
 	return borderStyle.Width(m.width - 4).Height(m.height - 4).Render(sb.String())
 }
 
+func (m model) renderForfeitDecisionView() string {
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render("PLAYER FORFEIT PENDING") + "\n\n")
+	sb.WriteString(fmt.Sprintf(" Player %s has requested to forfeit.\n\n", m.forfeitPendingID))
+	sb.WriteString(fmt.Sprintf(" HOST (%s) DECISION REQUIRED:\n\n", m.state.Meta.HostID))
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render(" [B] Let a BOT take over for this player") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(" [R] Return their resources to bank and continue") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Render(" [E] End the game immediately") + "\n\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(" Play will continue with remaining players.") + "\n")
+
+	return borderStyle.Width(m.width - 4).Height(m.height - 4).Align(lipgloss.Center, lipgloss.Center).Render(sb.String())
+}
+
 func (m model) View() string {
+	if m.isForfeiting {
+		return m.renderForfeitDecisionView()
+	}
 	if m.state.Meta.Status == "finished" && m.viewMode == 0 {
 		return m.renderGameOver()
 	}
@@ -3640,7 +4210,10 @@ func (m model) renderBoardView() string {
 	gameControlsSB.WriteString(ctrl(" R      : Roll Dice", isRoll))
 	gameControlsSB.WriteString(ctrl(" B      : Buy Dev Card", isAct))
 	gameControlsSB.WriteString(ctrl(" K      : Play Knight", isAct))
-	gameControlsSB.WriteString(ctrl(" E      : End Turn", isAct || isSetup))
+	gameControlsSB.WriteString(ctrl(" e      : End Turn", isAct || isSetup))
+	gameControlsSB.WriteString(ctrl(" f      : Forfeit", !isInv && !isFin))
+	gameControlsSB.WriteString(ctrl(" Ctrl+E : End Game (Host)", !isInv && !isFin))
+
 	gameControlsSB.WriteString(ctrl(" Q      : Quit", true))
 	gameControlsView := sectionStyle.Copy().Width((dashboardWidth - 4) / 2).Render(gameControlsSB.String())
 
@@ -3812,7 +4385,11 @@ func handleDMCommand(args []string) {
 	var topo Topology
 	topoData, err := os.ReadFile("topology.yaml")
 	if err == nil {
-		yaml.Unmarshal(topoData, &topo)
+		if err := yaml.Unmarshal(topoData, &topo); err != nil {
+			yaml.Unmarshal(embeddedTopology, &topo)
+		}
+	} else {
+		yaml.Unmarshal(embeddedTopology, &topo)
 	}
 
 	switch action {
